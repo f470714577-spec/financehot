@@ -1,0 +1,42 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# build
+dist/
+build/
+*.tsbuildinfo
+
+# test
+coverage/
+
+# env — 真实密钥绝不入库
+.env
+.env.local
+.env.*.local
+
+# turbo
+.turbo/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
+Desktop.ini
+
+# logs
+*.log
+logs/
+
+# misc
+tmp/
+temp/
