@@ -133,12 +133,18 @@ importers:
         specifier: ^8.13.1
         version: 8.23.0
     devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.1
       '@types/pg':
         specifier: ^8.11.10
         version: 8.21.0
       drizzle-kit:
         specifier: ^0.30.1
         version: 0.30.6(supports-color@7.2.0)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.12
       typescript:
         specifier: ^5.7.2
         version: 5.9.3

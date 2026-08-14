@@ -1,0 +1,59 @@
+import {
+  index,
+  integer,
+  pgTable,
+  real,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
+import { articles } from './articles';
+import { events } from './events';
+import { timestamps, type AiTaskType, type TaskStatus } from './common';
+
+export const ai_tasks = pgTable(
+  'ai_tasks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    task_type: text('task_type').notNull().$type<AiTaskType>(),
+    article_id: uuid('article_id').references(() => articles.id),
+    event_id: uuid('event_id').references(() => events.id),
+    status: text('status').notNull().$type<TaskStatus>().default('pending'),
+    prompt_version: text('prompt_version'),
+    model: text('model'),
+    provider: text('provider'),
+    input_hash: text('input_hash'),
+    error: text('error'),
+    retry_count: integer('retry_count').notNull().default(0),
+    ...timestamps(),
+  },
+  (t) => [
+    index('ai_tasks_status_idx').on(t.status),
+    index('ai_tasks_article_id_idx').on(t.article_id),
+    index('ai_tasks_task_type_idx').on(t.task_type),
+  ],
+);
+
+export const ai_usage = pgTable(
+  'ai_usage',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ai_task_id: uuid('ai_task_id')
+      .notNull()
+      .references(() => ai_tasks.id),
+    provider: text('provider'),
+    model: text('model'),
+    task_type: text('task_type'),
+    article_id: uuid('article_id').references(() => articles.id),
+    prompt_tokens: integer('prompt_tokens').notNull().default(0),
+    completion_tokens: integer('completion_tokens').notNull().default(0),
+    estimated_cost: real('estimated_cost'),
+    created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('ai_usage_ai_task_id_idx').on(t.ai_task_id),
+    index('ai_usage_article_id_idx').on(t.article_id),
+    index('ai_usage_task_type_idx').on(t.task_type),
+    index('ai_usage_created_at_idx').on(t.created_at),
+  ],
+);

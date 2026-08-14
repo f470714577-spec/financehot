@@ -5,7 +5,7 @@
 
 ## 当前阶段
 
-阶段 01 —— 项目基础工程与开发环境（已完成，待审核）
+阶段 02 —— 数据库 Schema、Migration 与 Seed（已完成，待审核）
 
 ## 项目目标
 
@@ -47,7 +47,8 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 
 ## 表结构状态
 
-- 阶段 01 **不建表**。P0 20 张表 + P1 8 张表（仅架构草案）在阶段 02 起按需创建。
+- 阶段 02 已建 **P0 20 张表**（Drizzle schema + migration + seed）；P1 8 张表未落库（阶段 17/18 再建）。
+- `articles` 无 `heat_score`、无 `event_id`；Article↔Event 唯一权威 = `event_articles`。
 - 完整表清单见 `docs/architecture.md` §4。
 
 ## 已完成阶段
@@ -55,6 +56,7 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - 阶段 00：架构冻结（PASS）
 - 阶段 00.1：架构修订（PASS）
 - 阶段 01：项目基础工程与开发环境（待审核）
+- 阶段 02：数据库 Schema、Migration 与 Seed（待审核）
 
 ## 阶段 01 验证结果
 
@@ -64,13 +66,22 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - Worker 启动：输出 `FinanceHot Worker started` + env 读取日志，进程保持存活
 - **Docker 已安装并打通**：Docker Desktop 4.86.0 + WSL2 后端；`postgres`（pgvector:pg16）与 `redis`（7-alpine）容器 healthy，扩展 `vector`/`pg_trgm`/`plpgsql` 就绪，Redis `PONG`。因本机无法直连 Docker Hub，已配置镜像加速（`~/.docker/daemon.json` 的 `registry-mirrors`），见 `docs/本地环境-Docker安装.md`。
 
+## 阶段 02 验证结果
+
+- Drizzle 定义 20 张 P0 表（`src/schema/` 按域拆分），migration `drizzle/0000_*.sql` 顶部含 `vector`/`pg_trgm` 扩展。
+- migrate ✓（20 表）/ seed ✓（sources 15、articles 82、events 12、topics 8、daily_reports 1）/ test 4/4 ✓ / typecheck ✓ / lint ✓。
+- 测试含 vector 列往返验证（customType 写入/读取正确）。
+- **宿主机端口 5433**：本机 PostgreSQL 14 占用 5432，`docker-compose.yml` 与 `.env.example` 统一用 `5433:5432` 映射；容器内部仍走 `postgres:5432`。
+
 ## 下一阶段
 
-阶段 02 —— 数据库 Schema、Migration 与 Seed（P0 20 张表）
+阶段 03 —— UI 设计系统与整体框架（Design Tokens + Light/Dark + App Shell + 13 组件骨架 + demo 页）
 
 ## 架构待办
 
-- 阶段 02：Drizzle schema 定义 + migration + seed + 最小 DB 访问层测试。
+- 阶段 03：UI 设计系统（Design Tokens + Light/Dark + App Shell + 13 组件骨架 + demo 页）。
+- 阶段 04：核心前台页面（Seed/mock 数据版）。
+- 阶段 05：新闻查询 API、筛选、搜索与分页。
 - 阶段 06：crawler 实现 RSS/API/Web Adapter + SSRF 防护。
 - 阶段 07：BullMQ Queue + Worker 状态机。
 - 阶段 08：LLM Provider 实现 + Structured Output + 翻译/摘要/分类/过滤。

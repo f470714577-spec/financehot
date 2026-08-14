@@ -67,6 +67,7 @@ pnpm dev
 
 ## 7. 当前进度与下一步
 
-- 阶段 01（项目基础工程与开发环境）：已完成，待审核。基线 commit `cc07d56`。
-- 下一阶段：阶段 02 —— 数据库 Schema、Migration 与 Seed（P0 20 张表）。
-- 注意：阶段 01 验证时本机无 Docker，DB 连接与 migration 尚未在真实 DB 环境跑过；阶段 02 起需在装好 Docker 的机器上验证。
+- 阶段 01（项目基础工程与开发环境）：已完成。基线 commit `cc07d56`。
+- 阶段 02（数据库 Schema、Migration 与 Seed）：已完成。20 张 P0 表 + migration + seed + 访问层测试。
+- 下一阶段：阶段 03 —— UI 设计系统与整体框架。
+- 注意：宿主机 Postgres 端口用 **5433**（本机 PG14 占 5432 的规避，见 `.env.example`）；接手后 `docker compose up -d postgres redis` 即可。
