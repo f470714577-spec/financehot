@@ -62,7 +62,7 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - `typecheck` 9/9 ✓ / `lint` 7/7 ✓ / `test` 7/7 ✓ / `build` 7/7 ✓（Next 15.5.23 编译成功，产物路由 `/` + `/_not-found`）
 - Web 启动：`next start` → http://localhost:3000，HTTP 200，页面含 "FinanceHot"
 - Worker 启动：输出 `FinanceHot Worker started` + env 读取日志，进程保持存活
-- **Docker 未安装（本机）**：`docker` / `docker compose` 命令不可用，PostgreSQL/Redis 容器无法在本机启动。属本机环境限制，非项目缺陷；阶段 02 起需在有 Docker 的环境验证 DB 连接与 migration。
+- **Docker 已安装并打通**：Docker Desktop 4.86.0 + WSL2 后端；`postgres`（pgvector:pg16）与 `redis`（7-alpine）容器 healthy，扩展 `vector`/`pg_trgm`/`plpgsql` 就绪，Redis `PONG`。因本机无法直连 Docker Hub，已配置镜像加速（`~/.docker/daemon.json` 的 `registry-mirrors`），见 `docs/本地环境-Docker安装.md`。
 
 ## 下一阶段
 
