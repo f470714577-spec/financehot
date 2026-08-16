@@ -29,10 +29,9 @@ export function DemoNotice() {
   return (
     <div className="mb-6 flex flex-col gap-2 rounded-md border border-signal-amber/25 bg-signal-amber/10 px-4 py-3 text-xs leading-5 text-ink sm:flex-row sm:items-center sm:justify-between">
       <span>
-        <strong>演示数据：</strong>当前页面使用数据库 Seed
-        中明确标记的模拟财经内容，尚未接入实时采集与查询 API。
+        <strong>Seed 数据版本：</strong>当前页面已从 PostgreSQL 读取数据库中明确标记的模拟财经内容，尚未接入实时采集。
       </span>
-      <span className="shrink-0 font-data text-[10px] text-ink-muted">阶段 04 · Seed UI</span>
+      <span className="shrink-0 font-data text-[10px] text-ink-muted">阶段 05 · PostgreSQL API</span>
     </div>
   );
 }

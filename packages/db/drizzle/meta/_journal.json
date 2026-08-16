@@ -8,6 +8,13 @@
       "when": 1786676466253,
       "tag": "0000_normal_madame_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786887468532,
+      "tag": "0001_lucky_spacker_dave",
+      "breakpoints": true
     }
   ]
 }

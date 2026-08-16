@@ -1,8 +1,12 @@
 import Link from 'next/link';
 import { EventCard } from '@financehot/ui';
-import type { DemoEventView } from '@/lib/demo-data';
+import type { EventSummary } from '@financehot/shared';
 
-export function EventList({ events, limit }: { events: DemoEventView[]; limit?: number }) {
+function formatDate(value: string | null): string {
+  return value ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)) : '时间未知';
+}
+
+export function EventList({ events, limit }: { events: EventSummary[]; limit?: number }) {
   const visibleEvents = limit ? events.slice(0, limit) : events;
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -14,12 +18,12 @@ export function EventList({ events, limit }: { events: DemoEventView[]; limit?: 
         >
           <EventCard
             title={event.title}
-            summary={event.summary}
-            heat={event.heat}
-            finance={event.finance}
+            summary={event.summary ?? '暂无事件摘要'}
+            heat={event.heatScore ?? 0}
+            finance={event.financeScore ?? 0}
             status={event.status}
-            sources={event.sources}
-            updatedAt={event.updatedAt}
+            sources={event.sourceCount}
+            updatedAt={formatDate(event.lastSeenAt)}
           />
         </Link>
       ))}

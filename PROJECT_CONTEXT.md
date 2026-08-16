@@ -2,11 +2,11 @@
 
 > FinanceHot 项目当前状态的短期事实源。每次阶段完成后更新，防止长对话或新会话产生架构漂移。
 > 权威基线仍是《FinanceHot DeepSeek 开发总控包 V1》+ `docs/architecture.md` + ADR。
-> 最近复验：2026-08-16；阶段 04 已完成本地正式验收并形成稳定基线，未推送、未部署、未上线。
+> 最近复验：2026-08-16；阶段 05 代码已实现并通过静态门禁，但本机 PostgreSQL 5433 / Docker engine 未启动，真实集成验收未完成；未推送、未部署、未上线。
 
 ## 当前阶段
 
-阶段 04 —— 核心前台页面（本地已验收，稳定基线）
+阶段 05 —— 新闻查询 API、筛选、搜索与分页（代码完成，数据库验收阻塞）
 
 ## 项目目标
 
@@ -102,13 +102,21 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - 工程门禁：使用 pnpm 11.21.0 完成 `lint` 7/7、`typecheck` 7/7、`test` 7/7、`build` 7/7；数据库测试 4 pass、0 fail、0 skipped、0 todo；Next.js ESLint 插件警告已清零。
 - 反向验证：临时加入明确的内部 `<a href="/">` 后 Web lint 退出 1；立即还原后同命令退出 0，证据见 `docs/acceptance/eslint-negative.txt` 与 `eslint-green.txt`。
 
+## 阶段 05 当前结果
+
+- 已实现 shared Zod DTO、统一 API 错误体、9 类 Route Handler、PostgreSQL 查询层、HMAC 复合 cursor、组合筛选、中文搜索、批量详情和新增索引迁移。
+- 阶段 04 全部前台路由已移除演示数据直连，首页、新闻、热点、详情、日报、主题均通过同一 DB 查询服务；浏览器筛选/搜索/加载更多通过 API。
+- Web 真实集成测试共 20 项，已穿过 Route Handler；本轮 PostgreSQL 5433 拒绝连接，实际结果 2 pass、18 fail；数据库原有 4 项同因 0 pass、4 fail，未删改原测试。
+- 静态门禁：lint 7/7、typecheck 7/7、build 7/7、git diff --check 通过；演示数据引用检查 0 命中。
+- 未完成：数据库 migrate+seed 后的 API 全绿、`EXPLAIN (ANALYZE, BUFFERS)` 计划证据、红→绿全套反向验证；详见 `BLOCKED.md` 与 `docs/acceptance/phase-05.md`。
+
 ## 下一阶段
 
-阶段 05 —— 新闻查询 API、筛选、搜索与分页
+阶段 06 —— crawler 实现 RSS/API/Web Adapter + SSRF 防护（阶段 05 数据库验收完成后）
 
 ## 架构待办
 
-- 阶段 05：新闻查询 API、筛选、搜索与分页。
+- 阶段 05：新闻查询 API、筛选、搜索与分页；代码完成，等待真实数据库验收。
 - 阶段 06：crawler 实现 RSS/API/Web Adapter + SSRF 防护。
 - 阶段 07：BullMQ Queue + Worker 状态机。
 - 阶段 08：LLM Provider 实现 + Structured Output + 翻译/摘要/分类/过滤。

@@ -1,5 +1,6 @@
 import {
   foreignKey,
+  index,
   integer,
   pgTable,
   real,
@@ -40,7 +41,10 @@ export const article_categories = pgTable(
     confidence: real('confidence'),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [unique('article_categories_unique').on(t.article_id, t.category_id)],
+  (t) => [
+    unique('article_categories_unique').on(t.article_id, t.category_id),
+    index('article_categories_category_article_idx').on(t.category_id, t.article_id),
+  ],
 );
 
 export const tags = pgTable('tags', {
@@ -63,7 +67,10 @@ export const article_tags = pgTable(
       .references(() => tags.id),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [unique('article_tags_unique').on(t.article_id, t.tag_id)],
+  (t) => [
+    unique('article_tags_unique').on(t.article_id, t.tag_id),
+    index('article_tags_tag_article_idx').on(t.tag_id, t.article_id),
+  ],
 );
 
 export const countries = pgTable('countries', {
@@ -87,7 +94,10 @@ export const article_countries = pgTable(
     role: text('role').$type<ArticleCountryRole>(),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [unique('article_countries_unique').on(t.article_id, t.country_id)],
+  (t) => [
+    unique('article_countries_unique').on(t.article_id, t.country_id),
+    index('article_countries_country_article_idx').on(t.country_id, t.article_id),
+  ],
 );
 
 export const topics = pgTable('topics', {
@@ -111,7 +121,9 @@ export const topic_articles = pgTable(
       .references(() => articles.id),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [unique('topic_articles_unique').on(t.topic_id, t.article_id)],
+  (t) => [
+    unique('topic_articles_unique').on(t.topic_id, t.article_id),
+  ],
 );
 
 export const event_topics = pgTable(
@@ -126,5 +138,7 @@ export const event_topics = pgTable(
       .references(() => events.id),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [unique('event_topics_unique').on(t.topic_id, t.event_id)],
+  (t) => [
+    unique('event_topics_unique').on(t.topic_id, t.event_id),
+  ],
 );

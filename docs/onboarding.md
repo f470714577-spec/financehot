@@ -67,6 +67,7 @@ pnpm dev
 
 - 阶段 01–02：已完成。阶段 02 已落地 20 张 P0 表、Migration、Seed 与访问层测试。
 - 阶段 03：UI 设计系统与整体框架已实现。
-- 阶段 04：核心前台页面 Seed 数据版已实现并完成本地验证，待项目审核；尚未部署为实时服务。
-- 下一阶段：阶段 05 —— 新闻查询 API、筛选、搜索与分页。
+- 阶段 04：核心前台页面 Seed 数据版已实现并完成本地验证，已形成稳定基线。
+- 阶段 05：查询 API、筛选、搜索、分页和前台 DB 接入代码已完成；必须先启动 5433 PostgreSQL、migrate+seed，并完成 `docs/acceptance/phase-05.md` 中的真实测试后再视为通过。
+- 下一阶段：阶段 06 —— crawler 实现 RSS/API/Web Adapter + SSRF 防护。
 - 注意：宿主机 Postgres 端口用 **5433**（本机 PG14 占 5432 的规避，见 `.env.example`）；接手后 `docker compose up -d postgres redis` 即可。
