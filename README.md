@@ -2,22 +2,23 @@
 
 面向中文用户的**全球财经新闻实时聚合、过滤、事件化与 AI 分析平台**。不是门户新闻站，也不是简单 RSS 阅读器，而是 AI 驱动的全球财经情报过滤器。
 
-> 当前开发阶段：**阶段 02（数据库 Schema / Migration / Seed）**。核心业务（采集 / AI / 去重 / 聚类 / 评分）尚未实现。
+> 当前开发阶段：**阶段 04（核心前台页面，已完成待审核）**。查询 API、实时采集、AI、去重、聚类与评分流水线尚未实现。
+
+当前进度与验证快照以 [`PROJECT_CONTEXT.md`](./PROJECT_CONTEXT.md) 为准。
 
 ## Monorepo 结构
 
 ```
 financehot/
 ├── apps/
-│   ├── web/            # Next.js 前台 + 后台 /admin + API
-│   └── worker/         # 独立后台 Worker（BullMQ 消费者，流程编排）
+│   ├── web/            # Next.js 前台；后台 /admin 与业务 API 尚待后续阶段
+│   └── worker/         # 独立后台 Worker；BullMQ 消费流程尚待阶段 07
 ├── packages/
 │   ├── shared/         # 基础公共层（类型/常量/工具/zod DTO/错误）
 │   ├── db/             # Drizzle schema、client、migration
-│   ├── ai/             # LLMProvider/EmbeddingProvider 接口
-│   ├── crawler/        # SourceAdapter 接口 + 采集实现
+│   ├── ai/             # LLMProvider/EmbeddingProvider 接口骨架
+│   ├── crawler/        # SourceAdapter 接口骨架；采集实现尚待阶段 06
 │   └── ui/             # Design Token + 基础组件
-├── prompts/            # 核心 Prompt 模板
 ├── scripts/            # 运维脚本
 ├── docker/             # Dockerfile + 初始化脚本
 └── docs/               # 架构文档 + ADR
@@ -26,13 +27,14 @@ financehot/
 ## 环境要求
 
 - Node.js >= 22
-- pnpm >= 9（推荐通过 `npm install -g pnpm` 安装）
+- pnpm 11.21.0（由根目录 `packageManager` 锁定，推荐使用 Corepack）
 - PostgreSQL 16 + pgvector（见下方 Docker）
 - Redis 7
 
 ## 安装
 
 ```bash
+corepack enable
 pnpm install
 ```
 
@@ -88,7 +90,7 @@ pnpm --filter @financehot/worker ping:redis
 pnpm build       # 构建
 pnpm lint        # 代码检查
 pnpm typecheck   # 类型检查
-pnpm test        # 测试（当前各包暂无测试，安全执行并明确结果）
+pnpm test        # 测试；数据库包含 4 项真实访问测试，其余部分包仍为占位测试
 ```
 
 ## 目前开发阶段
@@ -96,7 +98,8 @@ pnpm test        # 测试（当前各包暂无测试，安全执行并明确结�
 - [x] 阶段 00：架构冻结
 - [x] 阶段 01：基础工程与开发环境
 - [x] 阶段 02：数据库 Schema / Migration / Seed
-- [ ] 阶段 03：UI 设计系统与整体框架
-- [ ] 阶段 04+：核心页面 / API / 采集 / AI / 去重 / 聚类 / 评分 / 日报 / 后台 / 部署
+- [x] 阶段 03：UI 设计系统与整体框架
+- [x] 阶段 04：核心前台页面（Seed 数据版）
+- [ ] 阶段 05+：新闻 API / 采集 / AI / 去重 / 聚类 / 评分 / 日报 / 后台 / 部署
 
 > 尚未实现：新闻爬取、AI 调用、去重、Embedding、Event Cluster、Finance/Heat Score、后台业务、用户系统。请勿按已完成的业务功能理解本项目。

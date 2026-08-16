@@ -2,10 +2,11 @@
 
 > FinanceHot 项目当前状态的短期事实源。每次阶段完成后更新，防止长对话或新会话产生架构漂移。
 > 权威基线仍是《FinanceHot DeepSeek 开发总控包 V1》+ `docs/architecture.md` + ADR。
+> 最近复验：2026-08-16；阶段 04 已完成本地正式验收并形成稳定基线，未推送、未部署、未上线。
 
 ## 当前阶段
 
-阶段 02 —— 数据库 Schema、Migration 与 Seed（已完成，待审核）
+阶段 04 —— 核心前台页面（本地已验收，稳定基线）
 
 ## 项目目标
 
@@ -55,8 +56,10 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 
 - 阶段 00：架构冻结（PASS）
 - 阶段 00.1：架构修订（PASS）
-- 阶段 01：项目基础工程与开发环境（待审核）
-- 阶段 02：数据库 Schema、Migration 与 Seed（待审核）
+- 阶段 01：项目基础工程与开发环境（已完成，历史基线）
+- 阶段 02：数据库 Schema、Migration 与 Seed（PASS）
+- 阶段 03：UI 设计系统与整体框架（已完成，待审核）
+- 阶段 04：核心前台页面（已完成，本地验收通过）
 
 ## 阶段 01 验证结果
 
@@ -73,14 +76,38 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - 测试含 vector 列往返验证（customType 写入/读取正确）。
 - **宿主机端口 5433**：本机 PostgreSQL 14 占用 5432，`docker-compose.yml` 与 `.env.example` 统一用 `5433:5432` 映射；容器内部仍走 `postgres:5432`。
 
+## 阶段 03 验证结果
+
+> 以下为阶段完成时的历史验证记录；本次知识收尾未重复执行浏览器视觉验收。
+
+- 完成 Light/Dark 双主题与完整 Design Tokens：颜色、字体、字号、间距、圆角、阴影、状态色；遵循中国市场涨红跌绿，并通过图标/文字补充语义。
+- 完成 Desktop Sidebar + Header + Main Content App Shell；移动端使用抽屉侧栏与底部导航，390px 实测无横向溢出。
+- 完成 13 个组件骨架：NewsCard、EventCard、FinanceScoreBadge、HeatScoreBadge、MarketImpact、SourceBadge、Tag、DateGroup、FilterBar、SearchBar、EmptyState、ErrorState、Skeleton。
+- 根页面作为阶段 03 组件示例页，使用明确标识的演示财经内容；未接入 Crawler/AI。
+- 浏览器实测：桌面端与移动端渲染正常，Light/Dark 切换、移动导航开合正常，控制台无错误或警告。
+- `/health` 实测 HTTP 200，database/redis 均为 `up`。
+- build 7/7 ✓ / lint 7/7 ✓ / typecheck 7/7 ✓ / test 7/7 ✓；数据库 4 项真实访问测试全部通过。
+
+## 阶段 04 验证结果
+
+- 基于 `@financehot/db/seed-data` 建立前台视图模型适配层，事件、文章、主题、日报均复用同一套 Seed 数据；未提前实现阶段 05 查询 API。
+- 完成核心前台路由：`/`、`/news`、`/hot`、`/news/[id]`、`/event/[id]`、`/daily`、`/topics`、`/topics/[id]`。
+- 首页包含统计、Top 5 热点、分类切换、按日期分组时间流和“发现 N 条新动态”交互骨架。
+- 全部动态包含搜索、时间、市场、分类、评分筛选 UI；热点榜支持 1h / 3h / 6h / 12h / 24h / 7d 窗口切换骨架。
+- 新闻详情保留 Article 语义；事件详情展示多信源列表、事实状态、Finance/Heat Score 和事件时间线；日报与主题页可从 Seed 浏览。
+- 所有核心页面具备路由级 loading、全局 error、not-found，以及可通过 `?state=empty` / `?state=error` 预览的空数据/错误状态。
+- 2026-08-16 正式验收：1440×900 与 390×844 双视口逐页复核；11 个页面/状态入口页面级横向溢出为 0，浏览器页面控制台 error/warning 均为 0；首页、全部动态、热点榜、事件详情各保存桌面/移动截图。
+- 交互验收：移动导航抽屉、Light/Dark 切换、首页新动态提示、新闻搜索/分类筛选、热点时间窗口均通过；Article 详情与 Event 详情语义互斥且事件信源/时间线可见。
+- 服务验收：`/`、`/news`、`/hot`、新闻详情、事件详情、`/daily`、`/topics`、主题详情、`/health` HTTP 200；未知路由 HTTP 404；`/health` 返回 database/redis 均为 `up`。
+- 工程门禁：使用 pnpm 11.21.0 完成 `lint` 7/7、`typecheck` 7/7、`test` 7/7、`build` 7/7；数据库测试 4 pass、0 fail、0 skipped、0 todo；Next.js ESLint 插件警告已清零。
+- 反向验证：临时加入明确的内部 `<a href="/">` 后 Web lint 退出 1；立即还原后同命令退出 0，证据见 `docs/acceptance/eslint-negative.txt` 与 `eslint-green.txt`。
+
 ## 下一阶段
 
-阶段 03 —— UI 设计系统与整体框架（Design Tokens + Light/Dark + App Shell + 13 组件骨架 + demo 页）
+阶段 05 —— 新闻查询 API、筛选、搜索与分页
 
 ## 架构待办
 
-- 阶段 03：UI 设计系统（Design Tokens + Light/Dark + App Shell + 13 组件骨架 + demo 页）。
-- 阶段 04：核心前台页面（Seed/mock 数据版）。
 - 阶段 05：新闻查询 API、筛选、搜索与分页。
 - 阶段 06：crawler 实现 RSS/API/Web Adapter + SSRF 防护。
 - 阶段 07：BullMQ Queue + Worker 状态机。

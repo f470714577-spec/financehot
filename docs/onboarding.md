@@ -1,6 +1,6 @@
 # FinanceHot 新机器接手说明（Onboarding）
 
-> 状态：当前有效 · 日期：2026-08-13
+> 状态：当前有效 · 最近核对：2026-08-16
 > 目标：让另一台机器上的开发者 / Agent 快速拉起环境并接上开发进度
 
 ## 1. 项目与仓库
@@ -11,7 +11,7 @@
 
 ## 2. 前置要求
 
-- Node 18.18+（建议 20 LTS）
+- Node.js 22+
 - pnpm 11.21.0（项目已用 `packageManager` 字段锁定）
 - Docker + Docker Compose（起 PostgreSQL(pgvector) 与 Redis；阶段 02 起必需）
 - git
@@ -29,22 +29,20 @@ corepack enable && corepack install      # 推荐，自动读取 packageManager 
 pnpm install
 
 # 环境变量：从样例复制，按需填写
-# 阶段 01 启动 web/worker 不依赖真实 DB；LLM_* 留空也能启动
+# 当前 Seed 前台不依赖 LLM；LLM_* 留空也能启动
 cp .env.example .env
-
-# git 身份（用于后续提交）
-git config user.name "f470714577-spec"
-git config user.email "f470714577-spec@users.noreply.github.com"
 ```
 
 ## 4. 验证环境
 
 ```bash
-pnpm typecheck   # 阶段 01 结果 9/9
-pnpm lint        # 7/7
-pnpm test        # 7/7
-pnpm build       # 7/7
+pnpm typecheck
+pnpm lint
+pnpm test        # 数据库包需要已迁移并完成 Seed 的 PostgreSQL
+pnpm build
 ```
+
+2026-08-16 最近复验：7 个 TypeScript 配置检查通过、ESLint 通过、数据库测试 4/4 通过、Next.js 生产构建通过，10 条核心路由 HTTP 冒烟均返回 200。构建仍提示 ESLint 未检测到 Next.js 插件。
 
 ## 5. 启动
 
@@ -67,7 +65,8 @@ pnpm dev
 
 ## 7. 当前进度与下一步
 
-- 阶段 01（项目基础工程与开发环境）：已完成。基线 commit `cc07d56`。
-- 阶段 02（数据库 Schema、Migration 与 Seed）：已完成。20 张 P0 表 + migration + seed + 访问层测试。
-- 下一阶段：阶段 03 —— UI 设计系统与整体框架。
+- 阶段 01–02：已完成。阶段 02 已落地 20 张 P0 表、Migration、Seed 与访问层测试。
+- 阶段 03：UI 设计系统与整体框架已实现。
+- 阶段 04：核心前台页面 Seed 数据版已实现并完成本地验证，待项目审核；尚未部署为实时服务。
+- 下一阶段：阶段 05 —— 新闻查询 API、筛选、搜索与分页。
 - 注意：宿主机 Postgres 端口用 **5433**（本机 PG14 占 5432 的规避，见 `.env.example`）；接手后 `docker compose up -d postgres redis` 即可。
