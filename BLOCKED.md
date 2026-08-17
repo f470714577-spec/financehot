@@ -1,5 +1,7 @@
 # BLOCKED
 
+- 2026-08-17 最终未解决阻塞：无。首轮 Web 测试的无 TTY modules 清理、Node/Next 默认沙箱 `spawn EPERM` 与依赖链接恢复均已通过非交互/获批沙箱外路径解决；未留下业务范围外改动。
+- 2026-08-17 阶段05修复首轮基线：`git status --porcelain` 为空，HEAD 为 `e52c3e0 docs: 补充阶段05错误契约证据`；指定命令 `pnpm --filter @financehot/web test` 未进入测试脚本，pnpm 因无 TTY 尝试清理 modules 后以 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 退出。已记录并继续不依赖该入口的复核；待后续以非交互方式重跑同一测试入口。
 - 2026-08-16 续作替代路径核验：Docker 仅有失效的 `desktop-linux` named pipe；无可用 Podman/nerdctl/WSL；本机 PostgreSQL 14 缺少 `vector.control`，不能替代项目 pgvector 容器。未创建临时集群、未启动/修改系统服务。
 - 2026-08-16 续作只读核验：本机 PostgreSQL 14 服务监听 `5432`，项目要求的 `5433` 仍无监听；以项目凭据连接 `5432/financehot` 返回 `28P01`，确认不是可替代的项目数据库。未对该服务执行迁移、Seed 或写入。
 - 2026-08-16 阶段 05 开工：应用新增 migration `0001_lucky_spacker_dave.sql` 时，`pnpm --filter @financehot/db db:migrate` 实际失败 `ECONNREFUSED ::1:5433 / 127.0.0.1:5433`；本轮 PostgreSQL 未运行，根基线测试此前为 Turbo cache hit，不能据此声称真实 DB 已验证。已继续完成不依赖 DB 的代码、契约和测试准备；待本地数据库恢复后复验。

@@ -142,3 +142,81 @@ pnpm --filter @financehot/web test
 启动 `pnpm --filter @financehot/web dev` 后，9 类 API 均真实 HTTP 200：`/api/news`、`/api/news/[id]`、`/api/events`、`/api/events/[id]`、`/api/hot`、`/api/daily`、`/api/topics`、`/api/topics/[id]`、`/api/search`；列表均含 `items/nextCursor/hasMore`。错误实测：非法参数 `400/INVALID_PARAMETERS`、篡改 cursor `400/INVALID_CURSOR`、缺失资源 `404/NOT_FOUND`、非法 ID `400/INVALID_ID`，错误消息未泄露 SQL。另以仅监听 3001 的临时进程级坏数据库地址触发 500：`status=500`、`code=INTERNAL_ERROR`、消息为“服务暂时不可用”，SQL/栈泄露检查为 `False`；正常 PostgreSQL 未停止。
 
 浏览器按 1440×900 与 390×844 视口抽查 `/`、`/news`、`/hot`、Article/Event 详情、`/daily`、topics 列表/详情：8 路由 × 2 视口均命中预期标题、保留 Seed 提示、无横向溢出，页面控制台 error/warning `0`。交互实测：搜索写入 `q=%E7%BE%8E%E8%81%94%E5%82%A8`，宏观筛选追加 `category=macro`，刷新后 URL 保持不变；新闻加载更多卡片数 `21 → 41`。
+
+## 2026-08-17 时间筛选 cursor 锚点修复
+
+### 红→绿回归门禁
+
+```text
+git status --porcelain
+(空)
+git log -1 --oneline
+e52c3e0 docs: 补充阶段05错误契约证据
+
+pnpm --filter @financehot/web test
+[ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY]
+exit 1
+
+旧实现保留二次重算时（CI=true pnpm --filter @financehot/web test）
+ℹ tests 24
+ℹ pass 23
+ℹ fail 1
+ℹ skipped 0
+ℹ todo 0
+失败断言：actual 2026-08-10T12:00:17.321Z !== expected 2026-08-10T12:00:00.000Z
+
+修复后 CI=true pnpm --filter @financehot/web test
+ℹ tests 24
+ℹ pass 24
+ℹ fail 0
+ℹ skipped 0
+ℹ todo 0
+```
+
+四项新增纯函数测试分别覆盖 URL 原始 `from`、时间推进后的首次请求与 loadMore、其他筛选变化、24h↔7d 单次生成及 all 清除。反向验证临时让 cursor 忽略冻结锚点时再次得到 `tests 24 / pass 23 / fail 1 / exit 1`，失败断言与上述漂移一致；已立即还原，最终测试为 `24/24`。
+
+### 浏览器 A/A/A → B/B 实测
+
+使用本地 `http://localhost:3000/news`，页面控制台 error/warn 均为 `0`：
+
+```text
+选择 7d：A = 2026-08-10T12:32:48.743Z
+分类宏观：/news?category=macro&from=2026-08-10T12%3A32%3A48.743Z
+搜索美联储：/news?q=美联储&category=macro&from=2026-08-10T12%3A32%3A48.743Z
+刷新：from=2026-08-10T12:32:48.743Z，时间下拉仍为 7d
+加载更多：卡片 20 → 40，唯一卡片 40；服务端请求
+GET /api/news?from=2026-08-10T12%3A32%3A48.743Z&cursor=<存在> 200
+
+切换 24h：B = 2026-08-16T12:34:06.266Z，B != A
+加载更多：卡片 20 → 40，唯一卡片 40；服务端请求
+GET /api/news?from=2026-08-16T12%3A34%3A06.266Z&cursor=<存在> 200
+```
+
+### 修复后完整门禁
+
+```text
+pnpm lint
+Tasks: 7 successful, 7 total
+exit 0（0 error，0 warning）
+
+pnpm typecheck
+Tasks: 7 successful, 7 total
+exit 0
+
+pnpm test
+DB: tests 4, pass 4, fail 0, skipped 0, todo 0
+Web: tests 24, pass 24, fail 0, skipped 0, todo 0
+Tasks: 7 successful, 7 total
+exit 0
+
+pnpm build
+@financehot/web:build: ✓ Compiled successfully
+@financehot/web:build: ✓ Generating static pages (9/9)
+Tasks: 7 successful, 7 total
+exit 0
+
+git diff --check
+exit 0
+```
+
+原阶段 05 的 `apps/web/src/api.integration.test.ts` 20 项测试相对 `e52c3e0` diff 为 `0`；本修复仅新增 4 项无 React 纯函数测试。API、数据库、cursor 编解码、排序、debounce、package scripts/lockfile 均未修改。

@@ -5,6 +5,12 @@ import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { DateGroup, EmptyState, FilterBar, NewsCard, Tag } from '@financehot/ui';
 import type { NewsItem } from '@financehot/shared';
+import {
+  buildNewsParams,
+  changeTimeRange,
+  initialNewsQueryState,
+  type TimeRange,
+} from '@/lib/news-query';
 
 const categoryOptions = [
   { value: 'all', label: '全部' },
@@ -32,15 +38,6 @@ const timeOptions = [
   { value: '24h', label: '过去24小时' },
   { value: '7d', label: '过去7天' },
 ] as const;
-
-function initialTimeRange(query: Record<string, string | undefined>) {
-  if (query.timeRange === '24h' || query.timeRange === '7d') return query.timeRange;
-  if (!query.from) return 'all';
-  const age = Date.now() - Date.parse(query.from);
-  if (age >= 0 && age <= 36 * 60 * 60 * 1000) return '24h';
-  if (age >= 0 && age <= 8 * 86_400_000) return '7d';
-  return 'all';
-}
 
 function dateKey(item: NewsItem): string {
   return item.publishedAt?.slice(0, 10) ?? '未标注日期';
@@ -107,7 +104,8 @@ export function NewsFeed({
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [query, setQuery] = useState(initialQuery.q ?? '');
   const [category, setCategory] = useState(initialQuery.category ?? 'all');
-  const [timeRange, setTimeRange] = useState(() => initialTimeRange(initialQuery));
+  const [timeRangeState, setTimeRangeState] = useState(() => initialNewsQueryState(initialQuery, Date.now()));
+  const { timeRange } = timeRangeState;
   const [market, setMarket] = useState(initialQuery.market ?? 'all');
   const [source, setSource] = useState(initialQuery.source ?? 'all');
   const [score, setScore] = useState(initialQuery.minScore ?? 'all');
@@ -126,16 +124,7 @@ export function NewsFeed({
       return;
     }
     const timer = window.setTimeout(async () => {
-      const params = new URLSearchParams();
-      if (query.trim()) params.set('q', query.trim());
-      if (category !== 'all') params.set('category', category);
-      if (market !== 'all') params.set('market', market);
-      if (source !== 'all') params.set('source', source);
-      if (score !== 'all') params.set('minScore', score);
-      if (timeRange !== 'all') {
-        const from = new Date(Date.now() - (timeRange === '24h' ? 86_400_000 : 7 * 86_400_000));
-        params.set('from', from.toISOString());
-      }
+      const params = buildNewsParams(timeRangeState, { q: query, category, market, source, minScore: score });
       const endpoint = query.trim() ? '/api/search' : '/api/news';
       window.history.replaceState(null, '', `/news?${params.toString()}`);
       setLoading(true);
@@ -154,18 +143,11 @@ export function NewsFeed({
       }
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [category, market, query, score, showFilters, source, timeRange]);
+  }, [category, market, query, score, showFilters, source, timeRangeState]);
 
   async function loadMore() {
     if (!nextCursor || loading) return;
-    const params = new URLSearchParams();
-    if (query.trim()) params.set('q', query.trim());
-    if (category !== 'all') params.set('category', category);
-    if (market !== 'all') params.set('market', market);
-    if (source !== 'all') params.set('source', source);
-    if (score !== 'all') params.set('minScore', score);
-    if (timeRange !== 'all') params.set('from', new Date(Date.now() - (timeRange === '24h' ? 86_400_000 : 7 * 86_400_000)).toISOString());
-    params.set('cursor', nextCursor);
+    const params = buildNewsParams(timeRangeState, { q: query, category, market, source, minScore: score, cursor: nextCursor });
     setLoading(true);
     try {
       const response = await fetch(`${query.trim() ? '/api/search' : '/api/news'}?${params.toString()}`, { cache: 'no-store' });
@@ -179,6 +161,11 @@ export function NewsFeed({
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleTimeRangeChange(value: string) {
+    if (value !== 'all' && value !== '24h' && value !== '7d') return;
+    setTimeRangeState((current) => changeTimeRange(current, value as TimeRange, Date.now()));
   }
 
   const groupedItems = useMemo(() => {
@@ -195,7 +182,7 @@ export function NewsFeed({
           <input value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted" placeholder="搜索新闻、事件或主题" />
         </label>
         <div className="flex flex-wrap gap-2">
-          <SelectControl label="时间" value={timeRange} options={timeOptions} onChange={setTimeRange} />
+          <SelectControl label="时间" value={timeRange} options={timeOptions} onChange={handleTimeRangeChange} />
           <SelectControl label="市场" value={market} options={marketOptions} onChange={setMarket} />
           <SelectControl label="来源" value={source} options={sourceOptions} onChange={setSource} />
           <SelectControl label="评分" value={score} options={[{ value: 'all', label: '不限' }, { value: '80', label: '≥80' }, { value: '90', label: '≥90' }]} onChange={setScore} />

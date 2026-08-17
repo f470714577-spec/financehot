@@ -2,11 +2,11 @@
 
 > FinanceHot 项目当前状态的短期事实源。每次阶段完成后更新，防止长对话或新会话产生架构漂移。
 > 权威基线仍是《FinanceHot DeepSeek 开发总控包 V1》+ `docs/architecture.md` + ADR。
-> 最近复验：2026-08-16；阶段 05 代码已实现并通过静态门禁，但本机 PostgreSQL 5433 / Docker engine 未启动，真实集成验收未完成；未推送、未部署、未上线。
+> 最近复验：2026-08-17；阶段 05 PostgreSQL、API、前台、真实测试与工程门禁均通过；时间筛选 cursor 锚点修复已完成，未推送、未部署、未上线。
 
 ## 当前阶段
 
-阶段 05 —— 新闻查询 API、筛选、搜索与分页（代码完成，数据库验收阻塞）
+阶段 05 —— 新闻查询 API、筛选、搜索与分页（通过；时间筛选 cursor 锚点修复已收尾）
 
 ## 项目目标
 
@@ -106,9 +106,11 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 
 - 已实现 shared Zod DTO、统一 API 错误体、9 类 Route Handler、PostgreSQL 查询层、HMAC 复合 cursor、组合筛选、中文搜索、批量详情和新增索引迁移。
 - 阶段 04 全部前台路由已移除演示数据直连，首页、新闻、热点、详情、日报、主题均通过同一 DB 查询服务；浏览器筛选/搜索/加载更多通过 API。
-- Web 真实集成测试共 20 项，已穿过 Route Handler；本轮 PostgreSQL 5433 拒绝连接，实际结果 2 pass、18 fail；数据库原有 4 项同因 0 pass、4 fail，未删改原测试。
-- 静态门禁：lint 7/7、typecheck 7/7、build 7/7、git diff --check 通过；演示数据引用检查 0 命中。
-- 未完成：数据库 migrate+seed 后的 API 全绿、`EXPLAIN (ANALYZE, BUFFERS)` 计划证据、红→绿全套反向验证；详见 `BLOCKED.md` 与 `docs/acceptance/phase-05.md`。
+- Web 测试共 24 项：原有 PostgreSQL Route Handler 20 项加本次时间锚点纯函数回归 4 项，24 pass、0 fail/skip/todo；DB 测试 4 pass、0 fail/skip/todo，原 20 项测试文件相对修复前 diff 为 0。
+- 时间筛选已由单一状态锚点驱动：URL 初始化逐字复用 `from`，筛选/搜索/刷新/cursor 请求复用同一值，主动切换时间范围才生成一次新值，all 清除 `from`。
+- 静态门禁：lint 7/7（0 warning）、typecheck 7/7、build 7/7、git diff --check 通过；演示数据引用检查 0 命中。
+- 浏览器 A/A/A→B/B 实测通过：7d A 为 `2026-08-10T12:32:48.743Z`，加载更多 20→40 且 40 个唯一；24h B 为 `2026-08-16T12:34:06.266Z`，后续 cursor 继续复用 B；控制台 error/warn 为 0。
+- 阶段 05 已完成；阶段 06 仍未开发，当前无未解决阻塞。
 
 ## 下一阶段
 
