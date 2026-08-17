@@ -43,6 +43,7 @@
 - 2026-08-16 历史记录：代码修正曾并入本地提交，工作树干净，未 push、未部署；当时 5433 无监听，真实 DB 验收保持未完成。
 - 搜索计划修复已完成：直接字段搜索 + 关联表 `EXISTS`，最终 `event_articles` 计划 `loops=1`；未新增索引。
 - HTTP API 实测完成：9 类成功体/分页体，400/404 错误体与 SQL 泄露检查均符合契约；24h+macro+minScore=80 实际返回 1 条。
+- 500 故障契约补充实测完成：临时坏数据库实例返回 `500/INTERNAL_ERROR`，SQL/栈泄露检查 `False`；正常 PostgreSQL 未停止。
 - 前台实测完成：8 核心路由 × 1440×900/390×844，标题/Seed提示/无横向溢出/控制台 error-warning=0；搜索、筛选、刷新、加载更多均通过。
 - 工程门禁完成：lint/typecheck/test/build/diff check 全绿；Seed 直连 0、阶段06代码 0、白名单检查 PASS；当前未解决阻塞：无。
 - 本地验收 Web 会话已停止，3000 无监听；`.env` 仍为 ignored 未入库。

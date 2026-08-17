@@ -139,6 +139,6 @@ pnpm --filter @financehot/web test
 
 ### 真实 HTTP API 与前台
 
-启动 `pnpm --filter @financehot/web dev` 后，9 类 API 均真实 HTTP 200：`/api/news`、`/api/news/[id]`、`/api/events`、`/api/events/[id]`、`/api/hot`、`/api/daily`、`/api/topics`、`/api/topics/[id]`、`/api/search`；列表均含 `items/nextCursor/hasMore`。错误实测：非法参数 `400/INVALID_PARAMETERS`、篡改 cursor `400/INVALID_CURSOR`、缺失资源 `404/NOT_FOUND`、非法 ID `400/INVALID_ID`，错误消息未泄露 SQL。
+启动 `pnpm --filter @financehot/web dev` 后，9 类 API 均真实 HTTP 200：`/api/news`、`/api/news/[id]`、`/api/events`、`/api/events/[id]`、`/api/hot`、`/api/daily`、`/api/topics`、`/api/topics/[id]`、`/api/search`；列表均含 `items/nextCursor/hasMore`。错误实测：非法参数 `400/INVALID_PARAMETERS`、篡改 cursor `400/INVALID_CURSOR`、缺失资源 `404/NOT_FOUND`、非法 ID `400/INVALID_ID`，错误消息未泄露 SQL。另以仅监听 3001 的临时进程级坏数据库地址触发 500：`status=500`、`code=INTERNAL_ERROR`、消息为“服务暂时不可用”，SQL/栈泄露检查为 `False`；正常 PostgreSQL 未停止。
 
 浏览器按 1440×900 与 390×844 视口抽查 `/`、`/news`、`/hot`、Article/Event 详情、`/daily`、topics 列表/详情：8 路由 × 2 视口均命中预期标题、保留 Seed 提示、无横向溢出，页面控制台 error/warning `0`。交互实测：搜索写入 `q=%E7%BE%8E%E8%81%94%E5%82%A8`，宏观筛选追加 `category=macro`，刷新后 URL 保持不变；新闻加载更多卡片数 `21 → 41`。
