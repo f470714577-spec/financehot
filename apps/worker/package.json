@@ -8,11 +8,16 @@
     "build": "tsc --noEmit",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "node -e \"console.log('[@financehot/worker] no tests yet')\"",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "crawl-once": "tsx src/crawl-once-cli.ts",
+    "install-sources": "tsx src/install-sources-cli.ts",
     "ping:redis": "tsx src/ping-redis.ts"
   },
   "dependencies": {
+    "@financehot/crawler": "workspace:*",
+    "@financehot/db": "workspace:*",
     "@financehot/shared": "workspace:*",
+    "drizzle-orm": "^0.38.2",
     "ioredis": "^5.4.1"
   },
   "devDependencies": {

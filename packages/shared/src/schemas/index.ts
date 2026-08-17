@@ -215,3 +215,142 @@ export type HomeData = z.infer<typeof homeDataSchema>;
 export type ApiSuccess<T> = { success: true; data: T; error: null };
 export type ApiFailure = { success: false; data: null; error: ApiError };
 export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
+
+// 阶段 06 Crawler DTO 与表驱动 Adapter 配置。配置只保存字段映射和环境变量名，绝不保存密钥值。
+export const crawlerSourceTypeSchema = z.enum(['rss', 'api', 'web']);
+export type CrawlerSourceType = z.infer<typeof crawlerSourceTypeSchema>;
+
+export const crawlerSourceLevelSchema = z.enum(['A', 'B', 'C', 'D', 'E']);
+export type CrawlerSourceLevel = z.infer<typeof crawlerSourceLevelSchema>;
+
+const crawlerUrlSchema = z.string().url().refine((value) => {
+  return /^(https?):\/\/[^/@\s]+(?:\/[^\s]*)?$/i.test(value);
+}, '只允许无凭据的 http/https URL');
+
+const envVarNameSchema = z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/, '必须是环境变量名');
+
+export const sourceComplianceSchema = z.object({
+  robotsUrl: crawlerUrlSchema.optional(),
+  termsUrl: crawlerUrlSchema.optional(),
+  checkedAt: dateValue,
+  frequency: z.string().min(1).max(120),
+  storeExcerptOnly: z.literal(true).default(true),
+});
+export type SourceCompliance = z.infer<typeof sourceComplianceSchema>;
+
+const adapterCommonSchema = z.object({
+  maxItems: z.number().int().min(1).max(100).default(20),
+  maxBytes: z.number().int().min(1024).max(10_000_000).default(1_000_000),
+  userAgent: z.string().min(8).max(200).default('FinanceHotCrawler/0.1 (+https://github.com/f470714577-spec/financehot)'),
+  compliance: sourceComplianceSchema.optional(),
+});
+
+export const rssAdapterConfigSchema = adapterCommonSchema.extend({
+  kind: z.literal('rss'),
+  feedUrl: crawlerUrlSchema.optional(),
+});
+
+export const apiFieldMapSchema = z.object({
+  url: z.string().min(1).max(160),
+  canonicalUrl: z.string().min(1).max(160).optional(),
+  title: z.string().min(1).max(160),
+  summary: z.string().min(1).max(160).optional(),
+  content: z.string().min(1).max(160).optional(),
+  publishedAt: z.string().min(1).max(160).optional(),
+  language: z.string().min(1).max(160).optional(),
+});
+export type ApiFieldMap = z.infer<typeof apiFieldMapSchema>;
+
+export const apiAdapterConfigSchema = adapterCommonSchema.extend({
+  kind: z.literal('api'),
+  endpoint: crawlerUrlSchema,
+  itemsPath: z.string().max(160).default(''),
+  fields: apiFieldMapSchema,
+  headers: z.record(z.string().max(200)).optional(),
+  authEnvVar: envVarNameSchema.optional(),
+  authHeader: z.string().regex(/^[A-Za-z0-9-]{1,80}$/).default('Authorization'),
+  authScheme: z.enum(['Bearer', 'ApiKey', 'Raw']).default('Bearer'),
+});
+
+export const webFieldMapSchema = z.object({
+  url: z.string().min(1).max(200),
+  canonicalUrl: z.string().min(1).max(200).optional(),
+  title: z.string().min(1).max(200),
+  summary: z.string().min(1).max(200).optional(),
+  content: z.string().min(1).max(200).optional(),
+  publishedAt: z.string().min(1).max(200).optional(),
+  language: z.string().min(1).max(200).optional(),
+});
+export type WebFieldMap = z.infer<typeof webFieldMapSchema>;
+
+export const webAdapterConfigSchema = adapterCommonSchema.extend({
+  kind: z.literal('web'),
+  listingUrl: crawlerUrlSchema,
+  itemSelector: z.string().min(1).max(200),
+  fields: webFieldMapSchema,
+});
+
+export const sourceAdapterConfigSchema = z.discriminatedUnion('kind', [
+  rssAdapterConfigSchema,
+  apiAdapterConfigSchema,
+  webAdapterConfigSchema,
+]);
+export type SourceAdapterConfig = z.infer<typeof sourceAdapterConfigSchema>;
+export type SourceAdapterConfigInput = z.input<typeof sourceAdapterConfigSchema>;
+
+export const crawlerSourceSchema = z.object({
+  id: z.string().min(1).max(120),
+  name: z.string().min(1).max(200),
+  type: crawlerSourceTypeSchema,
+  country: z.string().max(8).nullable().optional(),
+  language: z.string().max(32).nullable().optional(),
+  homepage: crawlerUrlSchema.nullable().optional(),
+  rssUrl: crawlerUrlSchema.nullable().optional(),
+  sourceLevel: crawlerSourceLevelSchema,
+  enabled: z.boolean().default(true),
+  crawlInterval: z.number().int().min(1).max(86_400).default(3_600),
+  adapterConfig: sourceAdapterConfigSchema.nullable().optional(),
+});
+export type SourceDTO = z.infer<typeof crawlerSourceSchema>;
+
+const hashSchema = z.string().regex(/^[a-f0-9]{64}$/i, '必须是 SHA-256 十六进制哈希');
+
+export const rawArticleSchema = z.object({
+  sourceId: z.string().min(1).max(120),
+  originalUrl: crawlerUrlSchema,
+  canonicalUrl: crawlerUrlSchema.optional(),
+  rawTitle: z.string().max(500).optional(),
+  rawContent: z.string().max(200_000).optional(),
+  fetchedAt: dateValue,
+  contentType: z.string().min(1).max(160),
+  contentHash: hashSchema,
+  titleHash: hashSchema.optional(),
+});
+export type RawArticleDTO = z.infer<typeof rawArticleSchema>;
+
+export const parsedArticleSchema = z.object({
+  sourceId: z.string().min(1).max(120),
+  originalUrl: crawlerUrlSchema,
+  canonicalUrl: crawlerUrlSchema.optional(),
+  title: z.string().min(1).max(500),
+  summary: z.string().max(20_000).optional(),
+  content: z.string().max(200_000).optional(),
+  publishedAt: dateValue.optional(),
+  language: z.string().max(32).optional(),
+  fetchedAt: dateValue,
+});
+export type ParsedArticleDTO = z.infer<typeof parsedArticleSchema>;
+
+export const normalizedArticleSchema = z.object({
+  sourceId: z.string().min(1).max(120),
+  originalUrl: crawlerUrlSchema,
+  canonicalUrl: crawlerUrlSchema,
+  originalTitle: z.string().min(1).max(500),
+  originalSummary: z.string().max(20_000).optional(),
+  originalLanguage: z.string().max(32).optional(),
+  publishedAt: dateValue.optional(),
+  fetchedAt: dateValue,
+  contentHash: hashSchema,
+  titleHash: hashSchema,
+});
+export type NormalizedArticleDTO = z.infer<typeof normalizedArticleSchema>;

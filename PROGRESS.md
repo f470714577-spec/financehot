@@ -58,3 +58,23 @@
 - 浏览器证据：7d 的 A 在筛选、搜索、刷新、cursor 请求均复用；A 加载后 20→40 且 40 个卡片唯一；切到 24h 生成 B，后续 cursor 继续复用 B。
 - 反向红→绿：临时让 cursor 忽略冻结锚点为 `23 pass / 1 fail`，失败同上；已还原。
 - 最终门禁：lint/typecheck/test/build/diff check 全绿，DB `4/4`、Web `24/24`、原 20 项测试 diff=0、白名单检查 PASS；待创建本地修复提交。
+
+## 阶段 06 开工
+- 目标：让 5–10 个合规公开财经源经安全 Adapter 稳定进入 RawArticle/Article，为阶段07提供可验证输入。
+- 顺序：基线与契约 → 三类 Adapter/安全 fetcher → worker 同步 crawl-once/落库幂等 → 来源/测试/反向验证 → 全量验收与本地提交。
+- 最大风险：SSRF/重定向/DNS 安全边界、真实公开源合规证据、跨表事务与三轮幂等。
+- 基线实测：工作树在阶段06记录前干净，HEAD `db19a5c`，Node `v26.3.1`，pnpm `11.21.0`，Docker postgres/redis healthy；Web `24/24`、DB `4/4`，0 fail/skip/todo（获批沙箱外重跑）。
+- 已创建本地分支：`codex/stage-06-crawler`；不 push、不部署、不清库。
+- 阶段06任务1完成：shared Source/Raw/Parsed/Normalized DTO 与 Zod 配置契约已冻结；RSS/Atom、JSON API、HTML Web Adapter、canonical/hash/language/date 标准化已实现。
+- 阶段06任务2核心完成：统一 SafeFetcher 已实现协议/凭据/DNS/IPv4/IPv6/映射地址/重定向/字节/Content-Type/重试/Retry-After/robots/控频边界；crawler 测试 `31/31` 全绿。
+- 当前最大风险转为：adapter_config migration 与 worker 真实 PostgreSQL 事务/三轮幂等验收。
+- 阶段06任务3完成：`adapter_config` 唯一向前 migration `0002_fast_mattie_franklin.sql` 已应用；Demo `.example` 源已禁用；worker `crawl-once` 与来源安装脚本已接入真实 Drizzle/PostgreSQL。
+- 阶段06任务3验证：worker 集成测试 `9/9` 全绿，覆盖禁用 0 请求、running→success/failed/retrying、Raw 先行、跨 source 三键去重、事务错误边界和三轮幂等。
+- 真实 RSS 首轮：5 个启用官方 RSS、5 个 task success、80 Raw 输入/新增、15 Article 新增、0 failed/retrying；Web 候选 2 个均 disabled，未发生外部请求。
+- 合规复核修正：BIS `robots.txt` 明确禁止 `/doclist/`，因此不启用 BIS 两个候选；改为 Fed Policy Rates 与 ECB Statistical Press 两个官方 RSS，ECB 条款链接改为现行免责声明页；旧 BIS 行仅保留为 disabled，不请求。
+- 当前清单真实采集：先实测 2 个新到期官方 RSS（`tasksCreated=2`、`tasksSuccess=2`、`requests=2`、`rawInserted=15`、`articlesInserted=15`），再覆盖 3 个已到期官方 RSS（`tasksCreated=3`、`tasksSuccess=3`、`requests=3`、`rawSeen=50`、`rawExisting=50`、`articlesInserted=28`、`articlesDuplicate=22`）；新增 ECB Blog RSS 后再实测 1 个 task success、15 Raw、15 Article。当前 stage06 清单共 8 行，6 个启用 RSS、2 个 disabled Web。
+- 反向 SSRF：临时将 `addresses.some(isForbiddenAddress)` 改为恒假，测试实际 `29 pass / 2 fail`、退出码 1（DNS 混合地址与重定向私网两项）；还原后同命令 `31 pass / 0 fail`、退出码 0。
+- 三轮幂等证据：`[1,0,0]` Article 新增，后两轮各 `rawExisting=1`，最终 `Raw=1`、`Article=1`、task 状态为 `success/success/success`。
+- 最终 lint 首轮发现 SafeFetcher `while(true)` 与两个未使用变量；已做最小修正，`pnpm lint -- --force` 复跑 7/7 successful、0 error/0 warning。
+- 最终门禁：crawler `31/31`、worker `9/9`、DB `4/4`、Web `24/24`；lint/typecheck/test/build 分别 `7/7` successful，`git diff --check` exit 0。
+- 白名单复核唯一例外是阶段06初始 clean 核对后出现的外部 Word 临时锁文件 `~$nanceHot_DeepSeek_开发总控包_V1.docx`；未删除、未暂存，已在验收文档和 BLOCKED.md 记录，业务改动白名单外为 0。

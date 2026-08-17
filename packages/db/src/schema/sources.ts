@@ -2,6 +2,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   real,
   text,
@@ -9,6 +10,7 @@ import {
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
+import type { SourceAdapterConfig, SourceAdapterConfigInput } from '@financehot/shared';
 import { timestamps, type SourceLevel, type SourceType, type TaskStatus } from './common';
 
 export const sources = pgTable(
@@ -25,6 +27,7 @@ export const sources = pgTable(
     credibility_score: real('credibility_score'),
     enabled: boolean('enabled').notNull().default(true),
     crawl_interval: integer('crawl_interval'),
+    adapter_config: jsonb('adapter_config').$type<SourceAdapterConfig | SourceAdapterConfigInput | null>(),
     last_crawled_at: timestamp('last_crawled_at', { withTimezone: true }),
     ...timestamps(),
   },

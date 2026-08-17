@@ -15,6 +15,13 @@
       "when": 1786887468532,
       "tag": "0001_lucky_spacker_dave",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786972919646,
+      "tag": "0002_fast_mattie_franklin",
+      "breakpoints": true
     }
   ]
 }

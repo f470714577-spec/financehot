@@ -1,6 +1,6 @@
 # FinanceHot 新机器接手说明（Onboarding）
 
-> 状态：当前有效 · 最近核对：2026-08-16
+> 状态：当前有效 · 最近核对：2026-08-17
 > 目标：让另一台机器上的开发者 / Agent 快速拉起环境并接上开发进度
 
 ## 1. 项目与仓库
@@ -42,7 +42,7 @@ pnpm test        # 数据库包需要已迁移并完成 Seed 的 PostgreSQL
 pnpm build
 ```
 
-2026-08-16 最近复验：7 个 TypeScript 配置检查通过、ESLint 通过、数据库测试 4/4 通过、Next.js 生产构建通过，10 条核心路由 HTTP 冒烟均返回 200。构建仍提示 ESLint 未检测到 Next.js 插件。
+2026-08-17 最近复验：crawler 测试 31/31、worker PostgreSQL 集成测试 9/9、数据库测试 4/4、Web 测试 24/24 均通过；阶段06真实 RSS run-once 已产生 Raw/Article 输入。完整门禁与来源证据见 [`docs/acceptance/phase-06.md`](./acceptance/phase-06.md)。
 
 ## 5. 启动
 
@@ -52,6 +52,11 @@ docker compose up -d postgres redis
 
 # 起 Web（http://localhost:3000）与 Worker
 pnpm dev
+
+# 阶段06：迁移、安装来源、同步跑一轮
+pnpm --filter @financehot/db db:migrate
+pnpm --filter @financehot/worker install-sources
+pnpm --filter @financehot/worker crawl-once
 ```
 
 > `docker compose up -d`（不带服务名）会连同 web/worker 一起按 Dockerfile 构建启动；纯本地开发用上面分步方式即可。
@@ -68,6 +73,7 @@ pnpm dev
 - 阶段 01–02：已完成。阶段 02 已落地 20 张 P0 表、Migration、Seed 与访问层测试。
 - 阶段 03：UI 设计系统与整体框架已实现。
 - 阶段 04：核心前台页面 Seed 数据版已实现并完成本地验证，已形成稳定基线。
-- 阶段 05：查询 API、筛选、搜索、分页和前台 DB 接入代码已完成；必须先启动 5433 PostgreSQL、migrate+seed，并完成 `docs/acceptance/phase-05.md` 中的真实测试后再视为通过。
-- 下一阶段：阶段 06 —— crawler 实现 RSS/API/Web Adapter + SSRF 防护。
+- 阶段 05：查询 API、筛选、搜索、分页和前台 DB 接入已完成并通过 PostgreSQL 真实测试。
+- 阶段 06：RSS/Atom、JSON API、HTML Web Adapter、SSRF/DNS/重定向/robots/限流/重试和同步 `crawl-once` 已完成；持久化只在 `apps/worker` 组合，crawler 不写库。
+- 下一阶段：阶段 07 —— BullMQ 队列化和常驻 Worker 状态机；未经允许不要提前实现。
 - 注意：宿主机 Postgres 端口用 **5433**（本机 PG14 占 5432 的规避，见 `.env.example`）；接手后 `docker compose up -d postgres redis` 即可。

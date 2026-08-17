@@ -2,11 +2,11 @@
 
 > FinanceHot 项目当前状态的短期事实源。每次阶段完成后更新，防止长对话或新会话产生架构漂移。
 > 权威基线仍是《FinanceHot DeepSeek 开发总控包 V1》+ `docs/architecture.md` + ADR。
-> 最近复验：2026-08-17；阶段 05 PostgreSQL、API、前台、真实测试与工程门禁均通过；时间筛选 cursor 锚点修复已完成，未推送、未部署、未上线。
+> 最近复验：2026-08-17；阶段 05 已通过，阶段 06 已完成本地真实 RSS/Worker 验收；未推送、未部署、未上线。
 
 ## 当前阶段
 
-阶段 05 —— 新闻查询 API、筛选、搜索与分页（通过；时间筛选 cursor 锚点修复已收尾）
+阶段 06 —— 安全 RSS/API/Web Adapter 与同步 crawl-once（本地验收通过；BullMQ 留阶段07）
 
 ## 项目目标
 
@@ -110,16 +110,23 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - 时间筛选已由单一状态锚点驱动：URL 初始化逐字复用 `from`，筛选/搜索/刷新/cursor 请求复用同一值，主动切换时间范围才生成一次新值，all 清除 `from`。
 - 静态门禁：lint 7/7（0 warning）、typecheck 7/7、build 7/7、git diff --check 通过；演示数据引用检查 0 命中。
 - 浏览器 A/A/A→B/B 实测通过：7d A 为 `2026-08-10T12:32:48.743Z`，加载更多 20→40 且 40 个唯一；24h B 为 `2026-08-16T12:34:06.266Z`，后续 cursor 继续复用 B；控制台 error/warn 为 0。
-- 阶段 05 已完成；阶段 06 仍未开发，当前无未解决阻塞。
+- 阶段 05 已完成；阶段 06 当前结果见下节，当前无未解决的外部阻塞。
+
+## 阶段 06 当前结果
+
+- shared 已冻结 Source/Raw/Parsed/Normalized DTO 与 Zod `adapter_config`；crawler 提供 RSS/Atom、可配置 JSON API、可配置 HTML Web Adapter，统一返回 DTO，不写 DB、不调用 AI。
+- SafeFetcher 只允许无凭据 `http/https`，对全部 A/AAAA、IPv4-mapped IPv6、每次重定向、响应大小、Content-Type、Retry-After、robots 与 source 控频执行安全边界；错误按 security/dns/robots/http/parse/network 等分类。
+- `sources.adapter_config` 由 `0002_fast_mattie_franklin.sql` 单向 migration 增加；15 个 Demo `.example` 源被禁用。`apps/worker` 的同步 `crawl-once` 先写 `raw_articles` 再写 `articles`，按 canonical URL/content_hash/title_hash 幂等，并记录 crawl task 成败/重试。
+- 当前来源清单 8 行：6 个启用官方 RSS、2 个低频 Web 候选 disabled；BIS `/doclist/` 因 robots 禁止而淘汰，当前不再请求，早期探测结果不纳入合规验收。真实 run-once 已有 success task 与 Raw/Article 输入；详细数字、来源条款和测试命令见 `docs/acceptance/phase-06.md`。
 
 ## 下一阶段
 
-阶段 06 —— crawler 实现 RSS/API/Web Adapter + SSRF 防护
+阶段 06 —— crawler 实现 RSS/API/Web Adapter + SSRF 防护（已完成）
 
 ## 架构待办
 
 - 阶段 05：新闻查询 API、筛选、搜索与分页；已完成本地正式验收。
-- 阶段 06：crawler 实现 RSS/API/Web Adapter + SSRF 防护。
+- 阶段 06：crawler 安全 Adapter、来源表驱动同步 crawl-once、Raw/Article 幂等（已完成本地验收）。
 - 阶段 07：BullMQ Queue + Worker 状态机。
 - 阶段 08：LLM Provider 实现 + Structured Output + 翻译/摘要/分类/过滤。
 - 阶段 16：多阶段生产 Dockerfile + 部署。
