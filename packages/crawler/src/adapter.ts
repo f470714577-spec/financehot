@@ -86,11 +86,33 @@ function asArray<T>(value: T | T[] | undefined): T[] {
 
 function configFor(source: SourceLike, expected: SourceType): SourceAdapterConfig {
   const parsed = sourceAdapterConfigSchema.safeParse(source.adapterConfig);
-  if (parsed.success && parsed.data.kind === expected) return parsed.data;
-  if (expected === 'rss' && source.rssUrl) {
+  if (parsed.success) {
+    if (parsed.data.kind === expected) return parsed.data;
+    throw new CrawlerError(`Source ${source.id} 的 adapter_config 类型不是 ${expected}`, 'config');
+  }
+  if (source.adapterConfig == null && expected === 'rss' && source.rssUrl) {
     return rssAdapterConfigSchema.parse({ kind: 'rss', feedUrl: source.rssUrl });
   }
   throw new CrawlerError(`Source ${source.id} 缺少 ${expected} adapter_config`, 'config');
+}
+
+function excerptValue(value: unknown, depth = 0): unknown {
+  if (value === null || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'string') return boundedText(value, 20_000);
+  if (depth >= 8) return undefined;
+  if (Array.isArray(value)) return value.slice(0, 100).map((item) => excerptValue(item, depth + 1));
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .slice(0, 100)
+        .map(([key, item]) => [key, excerptValue(item, depth + 1)]),
+    );
+  }
+  return undefined;
+}
+
+function rawItemContent(item: unknown): string {
+  return JSON.stringify({ item: excerptValue(item) });
 }
 
 function feedItemLink(item: Record<string, unknown>): string | undefined {
@@ -151,7 +173,7 @@ function toParsed(raw: RawItem, item: Record<string, unknown>, source: SourceLik
     item.summary ?? item.description ?? item['content:encoded'] ?? item.content ?? item['dc:description'] ?? raw.rawContent,
     20_000,
   );
-  const content = boundedText(item['content:encoded'] ?? item.content ?? summary, 200_000);
+  const content = boundedText(item['content:encoded'] ?? item.content ?? summary, 20_000);
   const parsed = parsedArticleSchema.safeParse({
     sourceId: raw.sourceId,
     originalUrl,
@@ -169,7 +191,7 @@ function toParsed(raw: RawItem, item: Record<string, unknown>, source: SourceLik
 function normalizeParsed(parsed: ParsedItem[], source: SourceLike): NormalizedArticleDTO[] {
   return parsed.flatMap((item) => {
     try {
-      const content = boundedText(item.content ?? item.summary ?? item.title, 200_000) ?? item.title;
+      const content = boundedText(item.content ?? item.summary ?? item.title, 20_000) ?? item.title;
       const normalized = normalizedArticleSchema.parse({
         sourceId: item.sourceId || source.id,
         originalUrl: canonicalizeUrl(item.originalUrl),
@@ -220,7 +242,7 @@ export class RssAdapter implements SourceAdapter {
       const title = feedItemTitle(item);
       if (!itemUrl || !title) return [];
       const absoluteUrl = canonicalizeUrl(itemUrl, response.finalUrl);
-      const content = JSON.stringify({ item });
+      const content = rawItemContent(item);
       return [rawFromItem(source, absoluteUrl, title, content, response.contentType || 'application/xml')];
     }).slice(0, config.maxItems);
   }
@@ -285,7 +307,7 @@ export class ApiAdapter implements SourceAdapter {
       const title = boundedText(mappedValue(item, config.fields.title), 500);
       if (!url || !title) return [];
       const absoluteUrl = canonicalizeUrl(url, response.finalUrl);
-      const content = JSON.stringify({ item });
+      const content = rawItemContent(item);
       return [rawFromItem(source, absoluteUrl, title, content, response.contentType || 'application/json')];
     });
   }
@@ -298,7 +320,7 @@ export class ApiAdapter implements SourceAdapter {
       const title = boundedText(mappedValue(value, config.fields.title) ?? item.rawTitle, 500);
       if (!url || !title) return [];
       const summary = boundedText(mappedValue(value, config.fields.summary), 20_000);
-      const content = boundedText(mappedValue(value, config.fields.content) ?? summary, 200_000);
+      const content = boundedText(mappedValue(value, config.fields.content) ?? summary, 20_000);
       const parsed = parsedArticleSchema.safeParse({
         sourceId: item.sourceId,
         originalUrl: canonicalizeUrl(url, config.endpoint),

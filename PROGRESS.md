@@ -78,3 +78,7 @@
 - 最终 lint 首轮发现 SafeFetcher `while(true)` 与两个未使用变量；已做最小修正，`pnpm lint -- --force` 复跑 7/7 successful、0 error/0 warning。
 - 最终门禁：crawler `31/31`、worker `9/9`、DB `4/4`、Web `24/24`；lint/typecheck/test/build 分别 `7/7` successful，`git diff --check` exit 0。
 - 白名单复核唯一例外是阶段06初始 clean 核对后出现的外部 Word 临时锁文件 `~$nanceHot_DeepSeek_开发总控包_V1.docx`；未删除、未暂存，已在验收文档和 BLOCKED.md 记录，业务改动白名单外为 0。
+- 完成审计补强：无效 `adapter_config` 不再回退旧 RSS URL；5xx 在 Content-Type 不匹配时仍按 HTTP 可重试；RSS/API/Normalized 内容强制 20,000 字符摘录上限。crawler 测试增至 `34/34`，新增测试总数增至 `43`。
+- 当前最终代码真实 RSS 复验：Fed Press Releases 到期后 `sourcesDue=1`、`tasksSuccess=1`、`requests=1`、`rawSeen=20`、`rawInserted=1`、`rawExisting=19`、`articlesInserted=0`、`articlesDuplicate=20`；最新 Raw 摘录长度 484 字节、状态 `duplicate`、已关联 Article。
+- 当前最终代码 SSRF 反向复验：临时破坏私网拦截后 `32 pass / 2 fail`、退出码 1；还原后同命令 `34 pass / 0 fail`、退出码 0。
+- 当前最终代码 worker 三轮证据已重跑：三轮 Article 新增 `[1,0,0]`，后两轮 `rawExisting=1`、`articlesDuplicate=1`，最终 Raw/Article 各 1、task 状态全为 `success`，worker `9/9`。

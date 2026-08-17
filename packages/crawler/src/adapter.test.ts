@@ -100,6 +100,15 @@ describe('RSS Adapter', () => {
     assert.match(result.raw[0].contentHash, /^[a-f0-9]{64}$/);
     assert.equal(result.normalized[0].titleHash, sha256Hex('Market rises'));
   });
+
+  test('RSS 原始项和标准化摘要只保留有界摘录', async () => {
+    const long = '全文标记 '.repeat(6_000);
+    const xml = `<?xml version="1.0"?><rss version="2.0"><channel><item><title>Excerpt</title><link>https://news.example/excerpt</link><description>${long}</description></item></channel></rss>`;
+    const result = await new RssAdapter(fixtureFetcher({ 'https://news.example/feed.xml': response(200, xml, 'application/rss+xml') })).collect(rssSource);
+    assert.ok((result.raw[0].rawContent ?? '').length < 25_000);
+    assert.ok((result.normalized[0].originalSummary ?? '').length <= 20_000);
+    assert.equal(result.raw[0].rawContent?.includes(long), false);
+  });
 });
 
 describe('JSON API Adapter', () => {
@@ -198,6 +207,14 @@ describe('Web Adapter and robots', () => {
 });
 
 describe('URL 与安全 fetcher', () => {
+  test('无效 adapter_config 不得回退到旧 RSS URL', async () => {
+    const source = { ...rssSource, rssUrl: 'https://news.example/legacy.xml', adapterConfig: { kind: 'api' } } as unknown as SourceLike;
+    await assert.rejects(
+      () => new RssAdapter(fixtureFetcher({})).fetch(source),
+      (error: unknown) => error instanceof CrawlerError && error.kind === 'config',
+    );
+  });
+
   test('canonical URL 去掉 fragment 和追踪参数', () => {
     assert.equal(canonicalizeUrl('https://EXAMPLE.com/a?utm_source=x&keep=1#frag'), 'https://example.com/a?keep=1');
   });
@@ -279,6 +296,21 @@ describe('URL 与安全 fetcher', () => {
     const result = await fetcher.fetch('https://safe.example/', { maxAttempts: 3 });
     assert.equal(result.body, 'ok');
     assert.deepEqual(delays, [2000, 2000]);
+  });
+
+  test('5xx 即使 Content-Type 不匹配也必须重试', async () => {
+    let calls = 0;
+    const fetcher = fixtureFetcher({
+      'https://safe.example/error': () => {
+        calls += 1;
+        return response(503, 'busy', 'text/html');
+      },
+    }, [], { sleep: async () => undefined });
+    await assert.rejects(
+      () => fetcher.fetch('https://safe.example/error', { allowedContentTypes: /^application\/json$/, maxAttempts: 2 }),
+      (error: unknown) => error instanceof CrawlerError && error.kind === 'http' && error.status === 503,
+    );
+    assert.equal(calls, 2);
   });
 
   test('4xx 非 429 不重试', async () => {

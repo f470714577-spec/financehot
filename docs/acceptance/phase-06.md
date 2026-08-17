@@ -23,6 +23,7 @@ enabled + due source
 - JSON API：按 `itemsPath` 与字段映射读取数组；认证只保存环境变量名，不保存密钥。
 - HTML Web：按 selector 配置读取列表项；先 robots，再读取页面；移除 script/style/noscript/template/svg，只保留摘要级文本。
 - SafeFetcher：仅无凭据 `http/https`；DNS 解析得到的全部 A/AAAA 必须安全；实际请求绑定解析地址并复核；每次重定向重新校验；限制跳数、超时、响应字节和 Content-Type；仅 408/429/5xx/网络瞬断重试并尊重 Retry-After。
+- 内容合规：RSS/API/HTML 原始项与标准化内容均限制为摘录级文本，单字段最多 20,000 字符；无效 `adapter_config` 不得回退到旧 RSS URL。
 - robots：Web 源先读取 robots；404/410 允许继续，403/401 或 robots 请求失败拒绝；source 级最小间隔控频。
 - 落库：先 `raw_articles`，再 `articles`；canonical URL、content hash、title hash 任一重复都不新增 Article，重复 Raw 保留状态与关联。
 
@@ -78,6 +79,16 @@ tasksRetrying=0, requests=1, rawSeen=15, rawInserted=15,
 rawExisting=0, articlesInserted=15, articlesDuplicate=0
 ```
 
+摘录逻辑补强后的当前代码真实复验（Fed Press Releases，遵守低频到期条件）：
+
+```text
+sourcesDue=1, tasksCreated=1, tasksSuccess=1, tasksFailed=0,
+tasksRetrying=0, requests=1, rawSeen=20, rawInserted=1,
+rawExisting=19, articlesInserted=0, articlesDuplicate=20
+```
+
+该轮最新 Raw 摘录长度为 484 字节，状态为 `duplicate`，已关联既有 Article；未读取或展示新闻全文。
+
 PostgreSQL 只读核对显示：5 个已覆盖的启用源均有 success task、retry_count=0；Web 候选 enabled=false，未产生请求。Fed Policy Rates 本轮响应成功但没有有效 item，因此 Raw/Article 为 0；这不影响其他官方 RSS 的真实输入链路，后续若持续为空应替换而不是放宽解析条件。
 
 ## 5. 幂等、状态与失败恢复
@@ -95,9 +106,9 @@ finalRawCount=1, finalArticleCount=1, taskStatuses=[success, success, success]
 
 ## 6. 测试与反向验证
 
-阶段06新增测试：crawler 31 项 + worker PostgreSQL 9 项 = 40 项；均为真实 Adapter/持久化逻辑，只有外部 HTTP、DNS、时钟作为注入边界，没有 mock 被测核心逻辑；0 fail、0 skip、0 todo。
+阶段06新增测试：crawler 34 项 + worker PostgreSQL 9 项 = 43 项；均为真实 Adapter/持久化逻辑，只有外部 HTTP、DNS、时钟作为注入边界，没有 mock 被测核心逻辑；0 fail、0 skip、0 todo。
 
-反向 SSRF 验证：临时把 `addresses.some((record) => isForbiddenAddress(record.address))` 改为恒假，运行同一 crawler 测试实际得到 `29 pass / 2 fail`、退出码 1，失败覆盖混合 DNS 危险地址和重定向到私网；还原后得到 `31 pass / 0 fail`、退出码 0。临时改动已还原，未请求任何真实内网地址。
+反向 SSRF 验证：最终版本临时把 `addresses.some((record) => isForbiddenAddress(record.address))` 改为恒假，运行同一 crawler 测试实际得到 `32 pass / 2 fail`、退出码 1，失败覆盖混合 DNS 危险地址和重定向到私网；还原后得到 `34 pass / 0 fail`、退出码 0。临时改动已还原，未请求任何真实内网地址。
 
 ## 7. 运行命令
 
@@ -119,7 +130,7 @@ git diff --check
 
 2026-08-17 最后一次实际运行结果：
 
-- `pnpm --filter @financehot/crawler test`：31 pass、0 fail、0 skipped、0 todo。
+- `pnpm --filter @financehot/crawler test`：34 pass、0 fail、0 skipped、0 todo。
 - `pnpm --filter @financehot/worker test`：9 pass、0 fail、0 skipped、0 todo。
 - `pnpm --filter @financehot/db test`：4 pass、0 fail、0 skipped、0 todo。
 - `pnpm --filter @financehot/web test`：24 pass、0 fail、0 skipped、0 todo。

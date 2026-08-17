@@ -321,10 +321,12 @@ export class SafeFetcher {
         throw new CrawlerError('重定向缺少 Location', 'http', false, response.status, current.toString());
       }
       const contentType = headers['content-type']?.split(';', 1)[0].trim().toLowerCase() ?? '';
+      const safeResponse = { status: response.status, headers, body: Buffer.from(response.body).toString('utf8'), finalUrl: current.toString(), contentType };
+      if (response.status >= 400) return safeResponse;
       if (options.allowedContentTypes && !options.allowedContentTypes.test(contentType)) {
         throw new CrawlerError(`Content-Type 不允许: ${contentType || 'missing'}`, 'content_type', false, response.status, current.toString());
       }
-      return { status: response.status, headers, body: Buffer.from(response.body).toString('utf8'), finalUrl: current.toString(), contentType };
+      return safeResponse;
     }
     throw new CrawlerError('超过重定向跳数上限', 'security', false, undefined, current.toString());
   }
