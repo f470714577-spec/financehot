@@ -114,11 +114,11 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 
 ## 下一阶段
 
-阶段 06 —— crawler 实现 RSS/API/Web Adapter + SSRF 防护（阶段 05 数据库验收完成后）
+阶段 06 —— crawler 实现 RSS/API/Web Adapter + SSRF 防护
 
 ## 架构待办
 
-- 阶段 05：新闻查询 API、筛选、搜索与分页；代码完成，等待真实数据库验收。
+- 阶段 05：新闻查询 API、筛选、搜索与分页；已完成本地正式验收。
 - 阶段 06：crawler 实现 RSS/API/Web Adapter + SSRF 防护。
 - 阶段 07：BullMQ Queue + Worker 状态机。
 - 阶段 08：LLM Provider 实现 + Structured Output + 翻译/摘要/分类/过滤。
