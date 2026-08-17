@@ -140,4 +140,4 @@ git diff --check
 - `pnpm build -- --force`：7/7 successful，Next.js production build 完成。
 - `git diff --check`：exit 0。
 
-白名单检查发现一个不属于本任务、未被暂存的外部 Word 临时锁文件 `~$nanceHot_DeepSeek_开发总控包_V1.docx`；它在阶段06初始工作树核对后出现，未删除，以免误删用户文件。除该外部临时文件外，代码和文档改动均在任务白名单内；因此本地提交可审查，但工作树是否能达到绝对 clean 取决于该文件被 Word 释放。
+白名单检查曾发现一个不属于本任务、未被暂存的外部 Word 临时锁文件 `~$nanceHot_DeepSeek_开发总控包_V1.docx`；未执行删除，后续复核时该文件已由 Word 自行释放。最终 `git status --porcelain` 为空、暂存区为空，白名单外 diff=0。

@@ -24,3 +24,4 @@
 - BIS 候选源的 `https://www.bis.org/robots.txt` 禁止 `/doclist/`，与其 RSS URL 冲突；未降低门槛，改用已在官方 RSS 清单中的 Fed Policy Rates 与 ECB Statistical Press，旧 BIS 行通过安装脚本禁用，未发生请求。
 - 说明：发现 robots 冲突前的首轮本地探测曾对旧 BIS 行产生 success task；该结果不计入合规验收，来源随后已 disabled，当前 `crawl-once` 不再请求或展示这些源。未执行清库或删除，以遵守任务的不可破坏边界。
 - 2026-08-17 提交前白名单复核：`git diff --check` exit 0，代码/文档改动均在白名单；但初始 clean 核对后出现外部 Word 临时锁文件 `~$nanceHot_DeepSeek_开发总控包_V1.docx`，未由本任务创建且未暂存。未执行删除，避免破坏用户文件；该文件被 Word 释放后可再次核对工作树 clean。
+- 2026-08-17 阻塞解除：外部 Word 临时锁文件已自行释放；最终 `git status --porcelain` 为空、暂存区为空、白名单外 diff=0。当前未解决阻塞：无。

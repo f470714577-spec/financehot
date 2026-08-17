@@ -82,3 +82,4 @@
 - 当前最终代码真实 RSS 复验：Fed Press Releases 到期后 `sourcesDue=1`、`tasksSuccess=1`、`requests=1`、`rawSeen=20`、`rawInserted=1`、`rawExisting=19`、`articlesInserted=0`、`articlesDuplicate=20`；最新 Raw 摘录长度 484 字节、状态 `duplicate`、已关联 Article。
 - 当前最终代码 SSRF 反向复验：临时破坏私网拦截后 `32 pass / 2 fail`、退出码 1；还原后同命令 `34 pass / 0 fail`、退出码 0。
 - 当前最终代码 worker 三轮证据已重跑：三轮 Article 新增 `[1,0,0]`，后两轮 `rawExisting=1`、`articlesDuplicate=1`，最终 Raw/Article 各 1、task 状态全为 `success`，worker `9/9`。
+- 最终工作树复核：Word 临时锁文件已自行释放；`git status --porcelain` 为空、`git diff --check` exit 0、暂存区为空，白名单外 diff=0。
