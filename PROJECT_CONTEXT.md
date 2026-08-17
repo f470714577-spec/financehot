@@ -2,11 +2,11 @@
 
 > FinanceHot 项目当前状态的短期事实源。每次阶段完成后更新，防止长对话或新会话产生架构漂移。
 > 权威基线仍是《FinanceHot DeepSeek 开发总控包 V1》+ `docs/architecture.md` + ADR。
-> 最近复验：2026-08-17；阶段 05 已通过，阶段 06 已完成本地真实 RSS/Worker 验收；未推送、未部署、未上线。
+> 最近复验：2026-08-17；阶段 05、阶段 06 和阶段 07 已完成本地真实验收；未推送、未部署、未上线。
 
 ## 当前阶段
 
-阶段 06 —— 安全 RSS/API/Web Adapter 与同步 crawl-once（本地验收通过；BullMQ 留阶段07）
+阶段 07 —— BullMQ `crawl`→`normalize` 可靠后台流水线（本地 Redis+PostgreSQL 验收通过）
 
 ## 项目目标
 
@@ -121,13 +121,13 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 
 ## 下一阶段
 
-阶段 06 —— crawler 实现 RSS/API/Web Adapter + SSRF 防护（已完成）
+阶段 08 —— LLM Provider 实现与 AI 处理（未实现）
 
 ## 架构待办
 
 - 阶段 05：新闻查询 API、筛选、搜索与分页；已完成本地正式验收。
 - 阶段 06：crawler 安全 Adapter、来源表驱动同步 crawl-once、Raw/Article 幂等（已完成本地验收）。
-- 阶段 07：BullMQ Queue + Worker 状态机。
+- 阶段 07：BullMQ `crawl`/`normalize` Queue + Worker 状态机（已完成本地验收；详见 `docs/acceptance/phase-07.md`）。
 - 阶段 08：LLM Provider 实现 + Structured Output + 翻译/摘要/分类/过滤。
 - 阶段 16：多阶段生产 Dockerfile + 部署。
 

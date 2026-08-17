@@ -1,5 +1,26 @@
 # BLOCKED
 
+## 阶段07当前阻塞（2026-08-17）
+
+无。基线默认沙箱的 Docker named pipe/Node spawn 权限问题已通过获批沙箱外复核绕开；真实 Redis+PostgreSQL 测试、全量门禁和反向验证均已完成。以下保留原始环境输出和历史阻塞记录，便于接手时区分已解除问题与当前阻塞。
+
+## 阶段07基线原始证据（2026-08-17）
+
+```text
+git status --short --branch
+## codex/stage-06-crawler
+node -v
+v26.3.1
+pnpm -v
+11.21.0
+docker compose ps
+permission denied while trying to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine
+```
+
+四包测试首轮在默认沙箱中均因 Node `spawn EPERM` 退出 1；`CI=true` 并获批沙箱外重跑后 crawler `35/35`、worker `9/9`、DB `4/4`、Web `24/24`，均 `0 fail/skip/todo`。当前 HEAD `a78bdbb` 与任务书一致；分支名和 Docker 默认沙箱权限与任务书快照不一致，Docker 需沙箱外复核。
+
+- 2026-08-17 阶段07依赖环境：web-access 前置检查显示浏览器未开启远程调试；未进行浏览器自动化。BullMQ registry 安装首轮因 pnpm 禁止 `msgpackr-extract@3.0.4` 构建脚本退出 1；移除其误写入 `pnpm-workspace.yaml` 的临时配置后，以 `pnpm install --ignore-scripts --frozen-lockfile` 完成安装，`bullmq@5.81.3` 可由 worker 包导入。该环境记录不阻断代码实现。
+
 - 2026-08-17 阶段06基线首轮证据：`git status --porcelain` 为空，HEAD 为 `db19a5c`，Node `v26.3.1`，pnpm `11.21.0`；Docker 首次在默认沙箱中因 Docker API named pipe 权限拒绝，获批沙箱外复核后 `postgres`/`redis` 均 `Up ... (healthy)`。指定 Web/DB 测试在默认沙箱中先因 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 中止，设置 `CI=true` 后实际进入测试但均因 Node `spawn EPERM` 失败（Web 2/2 文件失败，DB 1/1 文件失败）。下一步仅用获批沙箱外路径重跑同一测试入口；在此之前不修改阶段06业务代码。
 - 2026-08-17 阶段06基线首轮已解除：获批沙箱外以 `CI=true` 重跑同一入口，Web `24 pass/0 fail/0 skipped/0 todo`，DB `4 pass/0 fail/0 skipped/0 todo`；Docker `postgres`/`redis` 均 healthy。此后允许进入阶段06业务实现。
 - 2026-08-17 最终未解决阻塞：无。首轮 Web 测试的无 TTY modules 清理、Node/Next 默认沙箱 `spawn EPERM` 与依赖链接恢复均已通过非交互/获批沙箱外路径解决；未留下业务范围外改动。

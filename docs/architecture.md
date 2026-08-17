@@ -268,7 +268,11 @@ POST   /api/admin/events/:id/split
 
 ### 6.1 Queue（BullMQ）
 
-规划队列为 `crawl / normalize / ai_process / embedding / cluster / score / daily_report`；当前尚未接入 BullMQ，也没有伪造 handler stub，阶段 07 再实现。
+队列契约固定为 `crawl / normalize / ai_process / embedding / cluster / score / daily_report`。阶段 07 已真实接入 `crawl`、`normalize` 两个 handler；其余名称只冻结版本化载荷契约，投递时明确拒绝，不启动消费者、不做成功占位。
+
+阶段 07 的实际链路是：Worker 启动后按 `sources.crawl_interval` 计算到期 slot，把 source 投递到 `crawl`；`crawl` 使用 SafeFetcher/SourceAdapter，先以 `pending` 保存 Raw，再投递 `normalize`；`normalize` 复用三键去重并更新 Raw/Article。`crawl-once` 只负责入队并等待队列排空，不保留同步业务旁路。
+
+运行配置集中在 `apps/worker/src/config/worker-config.ts`：默认队列前缀 `financehot:stage07`、并发 `2`、attempts `3`、指数退避初始 `1000ms`、完成/失败各保留 `100` 条；可由 `.env` 的 `FINANCEHOT_*` 覆盖。每个 source 使用确定性 job ID 和 Redis 分布式锁，数据库唯一约束是最终防线。
 
 ### 6.2 Article Pipeline 状态机（粗粒度，`articles.processing_status`）
 
@@ -317,8 +321,9 @@ PUBLISHED
 ### 6.3 失败与重试语义（BullMQ）
 
 - MVP **不实现独立 Dead Letter Queue（DLQ）**；不把 BullMQ 描述为自动提供独立 DLQ。
-- 失败处理 = **BullMQ failed set** + **`ai_tasks`/`crawl_tasks` 持久化失败状态** + **Admin 后台重新执行**。
-- 未来确有需要时，再增加专门 DLQ（独立队列 + 死信消费）。
+- 失败处理 = **BullMQ failed set** + **当前已实现 handler 的 `crawl_tasks` 持久化失败状态**；Admin 后台重跑留后续阶段。
+- Worker 关闭时停止接收新任务，等待在途任务并关闭 Worker/Queue/Redis/DB；未完成的 waiting/stalled job 由 BullMQ 保留并在新 Worker 启动后继续。
+- 未来确有需要时，再增加专门 DLQ（独立队列 + 死信消费）；阶段 07 不实现独立 DLQ。
 
 ## 7. 搜索架构（中文优先）
 

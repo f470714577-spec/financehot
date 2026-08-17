@@ -2,7 +2,7 @@
 
 面向中文用户的**全球财经新闻实时聚合、过滤、事件化与 AI 分析平台**。不是门户新闻站，也不是简单 RSS 阅读器，而是 AI 驱动的全球财经情报过滤器。
 
-> 当前开发阶段：**阶段 06（安全采集 Adapter 与同步 crawl-once，已完成本地验收）**。阶段 06 仍是受控本地采集链路，不是已上线的实时财经服务；AI、事件聚类、队列化调度和生产评分仍未实现。
+> 当前开发阶段：**阶段 07（BullMQ crawl→normalize 后台流水线，已完成本地真实验收）**。项目仍是 Seed 数据开发版本，不是已上线的实时财经服务；AI、事件聚类和生产评分仍未实现。
 
 当前进度与验证快照以 [`PROJECT_CONTEXT.md`](./PROJECT_CONTEXT.md) 为准。
 
@@ -12,7 +12,7 @@
 financehot/
 ├── apps/
 │   ├── web/            # Next.js 前台；后台 /admin 与业务 API 尚待后续阶段
-│   └── worker/         # 独立后台 Worker；BullMQ 消费流程尚待阶段 07
+│   └── worker/         # 独立后台 Worker；阶段07消费 crawl/normalize 队列
 ├── packages/
 │   ├── shared/         # 基础公共层（类型/常量/工具/zod DTO/错误）
 │   ├── db/             # Drizzle schema、client、migration
@@ -75,9 +75,12 @@ pnpm --filter @financehot/web dev
 
 ```bash
 pnpm --filter @financehot/worker install-sources
+pnpm --filter @financehot/worker start
 pnpm --filter @financehot/worker crawl-once
-# crawl-once 是阶段06同步单轮入口；BullMQ/常驻调度留到阶段07
+# start 启动 BullMQ 常驻调度；crawl-once 是“入队并等待本轮排空”的诊断入口
 ```
+
+Worker 只启动已有的 `crawl`、`normalize` handler。任务契约还冻结了 `ai_process`、`embedding`、`cluster`、`score`、`daily_report` 的版本和载荷，但这些队列在后续阶段实现前会明确拒绝投递。默认队列前缀、并发、attempts、指数退避和完成/失败记录保留时长由 `.env` 中的 `FINANCEHOT_*` 变量集中配置；失败任务查询 BullMQ failed set 与 `crawl_tasks`，不另建 DLQ。
 
 ### Redis PING 测试（可选）
 
@@ -113,6 +116,7 @@ pnpm --filter @financehot/worker install-sources
 - [x] 阶段 04：核心前台页面（Seed 数据版）
 - [x] 阶段 05：新闻 API / 筛选 / 搜索 / 分页
 - [x] 阶段 06：RSS/API/Web Adapter、安全抓取、来源表驱动 crawl-once 与 Raw/Article 幂等
-- [ ] 阶段 07+：BullMQ 队列 / AI / 聚类 / 评分 / 日报 / 后台 / 部署
+- [x] 阶段 07：BullMQ crawl/normalize 队列、常驻调度、重试、恢复、追踪与幂等
+- [ ] 阶段 08+：AI / 聚类 / 评分 / 日报 / 后台 / 部署
 
-> 尚未实现：BullMQ 常驻队列、AI 调用、Embedding、Event Cluster、Finance/Heat Score、后台业务、用户系统。请勿把阶段06的本地 run-once 误解为生产调度。
+> 尚未实现：AI 调用、Embedding、Event Cluster、Finance/Heat Score、后台业务、用户系统。请勿把本地 Seed/诊断入口误解为生产服务。

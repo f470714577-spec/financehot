@@ -42,7 +42,7 @@ pnpm test        # 数据库包需要已迁移并完成 Seed 的 PostgreSQL
 pnpm build
 ```
 
-2026-08-17 最近复验：crawler 测试 31/31、worker PostgreSQL 集成测试 9/9、数据库测试 4/4、Web 测试 24/24 均通过；阶段06真实 RSS run-once 已产生 Raw/Article 输入。完整门禁与来源证据见 [`docs/acceptance/phase-06.md`](./acceptance/phase-06.md)。
+2026-08-17 最近复验：crawler 测试 35/35、worker 测试 32/32、数据库测试 4/4、Web 测试 24/24 均通过，0 fail/skip/todo；阶段07真实 Redis+PostgreSQL crawl→normalize、重试、失败集和重启恢复证据见 [`docs/acceptance/phase-07.md`](./acceptance/phase-07.md)。
 
 ## 5. 启动
 
@@ -53,9 +53,11 @@ docker compose up -d postgres redis
 # 起 Web（http://localhost:3000）与 Worker
 pnpm dev
 
-# 阶段06：迁移、安装来源、同步跑一轮
+# 迁移、安装来源、启动 Worker
 pnpm --filter @financehot/db db:migrate
 pnpm --filter @financehot/worker install-sources
+pnpm --filter @financehot/worker start
+# 诊断入口：入队到 BullMQ，并等待本轮排空
 pnpm --filter @financehot/worker crawl-once
 ```
 
@@ -75,5 +77,6 @@ pnpm --filter @financehot/worker crawl-once
 - 阶段 04：核心前台页面 Seed 数据版已实现并完成本地验证，已形成稳定基线。
 - 阶段 05：查询 API、筛选、搜索、分页和前台 DB 接入已完成并通过 PostgreSQL 真实测试。
 - 阶段 06：RSS/Atom、JSON API、HTML Web Adapter、SSRF/DNS/重定向/robots/限流/重试和同步 `crawl-once` 已完成；持久化只在 `apps/worker` 组合，crawler 不写库。
-- 下一阶段：阶段 07 —— BullMQ 队列化和常驻 Worker 状态机；未经允许不要提前实现。
+- 阶段 07：BullMQ `crawl`/`normalize` 队列化、常驻调度、重试、恢复、追踪和幂等已完成；只启动已有 handler。
+- 下一阶段：阶段 08 —— LLM Provider 与 AI 处理；未经允许不要提前实现。
 - 注意：宿主机 Postgres 端口用 **5433**（本机 PG14 占 5432 的规避，见 `.env.example`）；接手后 `docker compose up -d postgres redis` 即可。
