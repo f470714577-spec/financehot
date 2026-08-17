@@ -130,26 +130,11 @@ function marketCodes(market: Market): SQL {
   return sql`c.code NOT IN (${codeList(['CN', 'HK', 'US', 'DE', 'FR', 'GB', 'JP'])})`;
 }
 
-const articleSearchDocument = sql`
+const directArticleSearchDocument = sql`
   concat_ws(' ',
     coalesce(a.title_zh, ''), coalesce(a.original_title, ''),
     coalesce(a.summary_zh, ''), coalesce(a.original_summary, ''),
-    coalesce(s.name, ''),
-    coalesce((SELECT string_agg(c.name_zh || ' ' || c.code, ' ')
-      FROM article_countries ac JOIN countries c ON c.id = ac.country_id
-      WHERE ac.article_id = a.id), ''),
-    coalesce((SELECT string_agg(ca.name, ' ')
-      FROM article_categories ac JOIN categories ca ON ca.id = ac.category_id
-      WHERE ac.article_id = a.id), ''),
-    coalesce((SELECT string_agg(t.name, ' ')
-      FROM article_tags at JOIN tags t ON t.id = at.tag_id
-      WHERE at.article_id = a.id), ''),
-    coalesce((SELECT string_agg(e.title || ' ' || coalesce(e.summary, ''), ' ')
-      FROM event_articles ea JOIN events e ON e.id = ea.event_id
-      WHERE ea.article_id = a.id), ''),
-    coalesce((SELECT string_agg(tp.name || ' ' || coalesce(tp.description, ''), ' ')
-      FROM topic_articles ta JOIN topics tp ON tp.id = ta.topic_id
-      WHERE ta.article_id = a.id), '')
+    coalesce(s.name, '')
   )
 `;
 
@@ -285,13 +270,36 @@ export async function listNews(db: QueryDb, input: NewsQuery | SearchQuery): Pro
   const kind: CursorKind = 'q' in query ? 'search' : 'news';
   const cursor = decodeCursor(query.cursor, kind);
   const searchJoin = 'q' in query
-    ? sql`CROSS JOIN LATERAL (SELECT ${articleSearchDocument} AS value) search_document`
+    ? sql`CROSS JOIN LATERAL (SELECT ${directArticleSearchDocument} AS value) search_document`
     : sql``;
   const searchCondition = 'q' in query
     ? [sql`(
       search_document.value ILIKE '%' || ${query.q} || '%'
       OR to_tsvector('simple', search_document.value) @@ plainto_tsquery('simple', ${query.q})
       OR similarity(search_document.value, ${query.q}) > 0.05
+      OR EXISTS (
+        SELECT 1 FROM article_countries ac JOIN countries c ON c.id = ac.country_id
+        WHERE ac.article_id = a.id
+          AND (c.name_zh ILIKE '%' || ${query.q} || '%' OR c.name_en ILIKE '%' || ${query.q} || '%' OR c.code ILIKE '%' || ${query.q} || '%')
+      )
+      OR EXISTS (
+        SELECT 1 FROM article_categories ac JOIN categories c ON c.id = ac.category_id
+        WHERE ac.article_id = a.id AND c.name ILIKE '%' || ${query.q} || '%'
+      )
+      OR EXISTS (
+        SELECT 1 FROM article_tags at JOIN tags t ON t.id = at.tag_id
+        WHERE at.article_id = a.id AND (t.name ILIKE '%' || ${query.q} || '%' OR t.slug ILIKE '%' || ${query.q} || '%')
+      )
+      OR EXISTS (
+        SELECT 1 FROM event_articles ea JOIN events e ON e.id = ea.event_id
+        WHERE ea.article_id = a.id
+          AND (e.title ILIKE '%' || ${query.q} || '%' OR e.summary ILIKE '%' || ${query.q} || '%')
+      )
+      OR EXISTS (
+        SELECT 1 FROM topic_articles ta JOIN topics t ON t.id = ta.topic_id
+        WHERE ta.article_id = a.id
+          AND (t.name ILIKE '%' || ${query.q} || '%' OR t.description ILIKE '%' || ${query.q} || '%')
+      )
     )`]
     : [];
   const where = articleConditions(query, cursor, searchCondition);

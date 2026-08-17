@@ -12,4 +12,6 @@
 - 浏览器外层 Statsig 遥测曾超时，FinanceHot 页面 `tab.dev.logs` error 始终为 0；不属于项目阻塞。
 - 首次 `git commit` 因仓库未配置 author identity 退出 1；已从现有 HEAD 读取身份并写入 local Git config，阻塞已解决。
 
-当前无未解决阻塞项；以上环境差异均有替代验证证据。
+2026-08-16 当时记录：该轮暂无新的未解决阻塞；随后阶段05真实数据库验收仍因 Docker engine 未启动而阻塞，详见上方带日期的阶段05记录。
+
+2026-08-17 收尾复验：Docker Desktop、PostgreSQL、Redis、migration、Seed、DB/Web真实测试、EXPLAIN、API、双视口前台与工程门禁均已完成；当前未解决阻塞：无。

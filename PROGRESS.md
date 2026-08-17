@@ -23,10 +23,27 @@
 - 已创建本地分支：codex/stage-05-news-api；不 push、不部署。
 
 ## 阶段 05 状态
+- 本轮收尾目标：把 `555d8ec` 验证为 PostgreSQL、API、前台、性能与工程门禁均真实通过的稳定基线。
+- 本轮顺序：Docker/依赖服务 → migrate+seed/真实测试 → API与EXPLAIN → 双视口前台 → 全部门禁与收尾提交。
+- 本轮最大风险：Docker Desktop/5433 恢复失败，以及固定 Seed 时间语义导致真实集成测试失效。
+- 本轮基线实测：HEAD `555d8ec`，工作树干净，pnpm `11.21.0`，context `desktop-linux`，Docker engine 不可用，5433 无监听。
+- 依赖服务已恢复：Docker engine `29.7.2`；postgres/redis 均 `running healthy`；`pg_isready` accepting connections；Redis `PONG`。
+- `.env` 已从 `.env.example` 复制，未入库；未删除 volume、未修改 Docker 全局设置。
+- 真实 migrate+seed 与表/扩展/Seed 数量核对已完成。
+- 迁移/Seed 验收完成：20 表、`pg_trgm`/`vector`、Seed 目标计数均实测符合。
+- DB 测试：4 pass、0 fail/skip/todo；Web 真实集成：20 pass、0 fail/skip/todo。
+- 反向验证：篡改 cursor 期望得到 19 pass/1 fail、退出码 1；恢复后 20 pass，原测试文件 diff=0。
+- 5 类 EXPLAIN、9 类 API 与前台双视口验收已完成。
 - DTO/错误体、查询层、HMAC cursor、5 项索引迁移和 9 类 API 已完成；前台 8 路由已切 PostgreSQL/API，演示直连 0 命中。
 - Web 已写 20 项真实集成测试；静态 lint/typecheck/build 均 7/7，diff check 通过。
-- 阻塞：5433 PostgreSQL 未运行，Docker engine 缺失；真实测试 2 pass/18 fail，原 DB 4 项 0 pass/4 fail；详见 `BLOCKED.md`。
-- 待数据库恢复：migrate+seed、EXPLAIN、API 全绿、红→绿反向验证；当前代码修正可独立提交，恢复数据库后再追加验收提交。
+- 2026-08-16 历史阻塞：5433 PostgreSQL 未运行，Docker engine 缺失；真实测试 2 pass/18 fail，原 DB 4 项 0 pass/4 fail；详见 `BLOCKED.md`。
+- 2026-08-16 历史待办：数据库恢复后补做 migrate+seed、EXPLAIN、API 全绿与红→绿反向验证；已于本轮完成。
 - 无数据库审查修正：补齐 `heat_score IS NULL` 的热点 cursor 分支；移除不发 API 请求的阶段 04 假“刷新动态”交互。数据库相关证据仍未宣称完成。
 - 无数据库审查修正：从带 `from` 的新闻 URL 恢复时间范围，避免刷新后 cursor 加载更多丢失时间筛选。
-- 本轮代码修正已并入当前本地提交；工作树干净，未 push、未部署。最新复核仍为 5433 无监听、Docker engine 不可用，真实 DB 验收保持未完成。
+- 2026-08-16 历史记录：代码修正曾并入本地提交，工作树干净，未 push、未部署；当时 5433 无监听，真实 DB 验收保持未完成。
+- 搜索计划修复已完成：直接字段搜索 + 关联表 `EXISTS`，最终 `event_articles` 计划 `loops=1`；未新增索引。
+- HTTP API 实测完成：9 类成功体/分页体，400/404 错误体与 SQL 泄露检查均符合契约；24h+macro+minScore=80 实际返回 1 条。
+- 前台实测完成：8 核心路由 × 1440×900/390×844，标题/Seed提示/无横向溢出/控制台 error-warning=0；搜索、筛选、刷新、加载更多均通过。
+- 工程门禁完成：lint/typecheck/test/build/diff check 全绿；Seed 直连 0、阶段06代码 0、白名单检查 PASS；当前未解决阻塞：无。
+- 本地验收 Web 会话已停止，3000 无监听；`.env` 仍为 ignored 未入库。
+- 收尾待办：创建本地阶段05收尾提交并复核工作树干净；不 push、不部署。
