@@ -191,13 +191,18 @@ const nodeRequest: RequestImplementation = (url, options) =>
         chunks.push(chunk);
       });
       response.on('end', () => {
+        clearRequestTimer();
         resolve({ status: response.statusCode ?? 0, headers: headersToRecord(response.headers), body: Buffer.concat(chunks) });
       });
-      response.on('error', reject);
+      response.on('error', (error) => {
+        clearRequestTimer();
+        reject(error);
+      });
     });
     const timer = setTimeout(() => request.destroy(new CrawlerError('请求超时', 'timeout')), options.timeoutMs);
+    const clearRequestTimer = () => clearTimeout(timer);
     request.on('error', (error) => {
-      clearTimeout(timer);
+      clearRequestTimer();
       reject(error);
     });
     request.end();

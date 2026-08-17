@@ -1,4 +1,6 @@
 import { strict as assert } from 'node:assert';
+import { EventEmitter } from 'node:events';
+import http from 'node:http';
 import { describe, test } from 'node:test';
 
 import {
@@ -338,6 +340,45 @@ describe('URL 与安全 fetcher', () => {
     });
     assert.equal((await fetcher.fetch('https://safe.example/')).body, 'ok');
     assert.equal(count, 3);
+  });
+
+  test('成功响应结束后清除请求超时计时器', async () => {
+    const originalRequest = http.request;
+    let destroyed = false;
+    let responseCallback: ((response: http.IncomingMessage) => void) | undefined;
+    const request = new EventEmitter() as http.ClientRequest;
+    request.destroy = ((error?: Error) => {
+      destroyed = true;
+      if (error) request.emit('error', error);
+      return request;
+    }) as http.ClientRequest['destroy'];
+    request.end = (() => {
+      queueMicrotask(() => {
+        const response = new EventEmitter() as http.IncomingMessage;
+        response.statusCode = 200;
+        response.headers = { 'content-type': 'text/plain' };
+        responseCallback?.(response);
+        response.emit('data', Buffer.from('ok'));
+        response.emit('end');
+      });
+      return request;
+    }) as http.ClientRequest['end'];
+    (http as { request: typeof http.request }).request = ((_options, callback) => {
+      responseCallback = callback as (response: http.IncomingMessage) => void;
+      return request;
+    }) as typeof http.request;
+
+    try {
+      const fetcher = new SafeFetcher({
+        resolve: async () => [{ address: '93.184.216.34', family: 4 }],
+      });
+      const result = await fetcher.fetch('http://timer.example/', { timeoutMs: 30 });
+      assert.equal(result.body, 'ok');
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      assert.equal(destroyed, false, '成功响应后旧计时器不应再销毁 request');
+    } finally {
+      (http as { request: typeof http.request }).request = originalRequest;
+    }
   });
 
   test('解析或安全错误不重试', async () => {

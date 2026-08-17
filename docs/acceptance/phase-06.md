@@ -106,7 +106,7 @@ finalRawCount=1, finalArticleCount=1, taskStatuses=[success, success, success]
 
 ## 6. 测试与反向验证
 
-阶段06新增测试：crawler 34 项 + worker PostgreSQL 9 项 = 43 项；均为真实 Adapter/持久化逻辑，只有外部 HTTP、DNS、时钟作为注入边界，没有 mock 被测核心逻辑；0 fail、0 skip、0 todo。
+阶段06新增测试：crawler 35 项 + worker PostgreSQL 9 项 = 44 项；均为真实 Adapter/持久化逻辑，只有外部 HTTP、DNS、时钟作为注入边界，没有 mock 被测核心逻辑；0 fail、0 skip、0 todo。
 
 反向 SSRF 验证：最终版本临时把 `addresses.some((record) => isForbiddenAddress(record.address))` 改为恒假，运行同一 crawler 测试实际得到 `32 pass / 2 fail`、退出码 1，失败覆盖混合 DNS 危险地址和重定向到私网；还原后得到 `34 pass / 0 fail`、退出码 0。临时改动已还原，未请求任何真实内网地址。
 
@@ -130,7 +130,7 @@ git diff --check
 
 2026-08-17 最后一次实际运行结果：
 
-- `pnpm --filter @financehot/crawler test`：34 pass、0 fail、0 skipped、0 todo。
+- `pnpm --filter @financehot/crawler test`：35 pass、0 fail、0 skipped、0 todo。
 - `pnpm --filter @financehot/worker test`：9 pass、0 fail、0 skipped、0 todo。
 - `pnpm --filter @financehot/db test`：4 pass、0 fail、0 skipped、0 todo。
 - `pnpm --filter @financehot/web test`：24 pass、0 fail、0 skipped、0 todo。
@@ -141,3 +141,9 @@ git diff --check
 - `git diff --check`：exit 0。
 
 白名单检查曾发现一个不属于本任务、未被暂存的外部 Word 临时锁文件 `~$nanceHot_DeepSeek_开发总控包_V1.docx`；未执行删除，后续复核时该文件已由 Word 自行释放。最终 `git status --porcelain` 为空、暂存区为空，白名单外 diff=0。
+
+## 9. 验收后计时器修复
+
+独立验收发现默认 Node 请求在成功响应后未清除 10 秒总超时计时器，导致同一 Fed RSS 实抓虽已完成，进程仍约 11.09 秒才退出。修复后成功响应、响应错误与请求错误都会清除计时器，并新增“成功响应结束后清除请求超时计时器”回归测试。
+
+同一 Fed RSS、同样 `timeoutMs=10000` 的修复后实测：Raw/Parsed/Normalized 各 3 条，命令正常退出，耗时 2.00 秒；crawler 测试更新为 35 pass、0 fail/skip/todo。
