@@ -1,6 +1,6 @@
 # 阶段 07 验收：BullMQ crawl→normalize 可靠后台流水线
 
-日期：2026-08-17
+日期：2026-08-17；验收修复复验：2026-08-18
 分支：`codex/stage-07-queue-worker`
 基线：`a78bdbb`
 范围：只把阶段 06 已验证的采集能力接入 Redis/BullMQ；不启动 AI、Embedding、聚类、评分或日报。
@@ -40,7 +40,7 @@ Worker 启动
 
 新增 `apps/worker/src/queue.integration.test.ts`，使用真实 Redis、PostgreSQL、BullMQ、DB 和 handler；只有外部 HTTP/DNS 通过注入的 SafeFetcher fixture 控制。每个测试使用独立 queue prefix 和 source fixture，清理只匹配自己的 prefix/行，没有 `FLUSHALL` 或清库。
 
-Worker 集成测试共 23 项，加上原有阶段 06 Worker 测试 9 项，共 32 项，0 skip/todo，覆盖：
+阶段 07 Worker 集成测试共 24 项，加上阶段 06 Worker 测试 9 项，共 33 项，0 skip/todo，覆盖：
 
 - contract version、关联 ID、未知 job 和未实现 job 拒绝；
 - source 入队、Raw→normalize、Article 落库；
@@ -48,7 +48,7 @@ Worker 集成测试共 23 项，加上原有阶段 06 Worker 测试 9 项，共 
 - canonical/content/title 三键去重、三轮重复输入；
 - retrying 可观察、短暂 network 失败后成功、耗尽后 failed set+DB failed；
 - 启动调度、crawl interval、completed 保留；
-- waiting job 的 Worker 重启接手、graceful shutdown、停止接收新任务、关联日志。
+- waiting job 的 Worker 重启接手、active job 在 Worker 异常中断并超过 lock 后转为 stalled、由新 Worker 接管、graceful shutdown、停止接收新任务、关联日志。
 
 最终 Worker 测试命令及实际输出摘要：
 
@@ -57,9 +57,9 @@ $env:CI='true'; pnpm --filter @financehot/worker test
 $ tsx --test --test-concurrency=1 "src/**/*.test.ts"
 ✔ worker crawl-once PostgreSQL 集成 (9 tests)
 ✔ 阶段07真实 Redis + PostgreSQL BullMQ 集成
-ℹ tests 32
+ℹ tests 33
 ℹ suites 2
-ℹ pass 32
+ℹ pass 33
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
@@ -77,6 +77,7 @@ $ tsx --test --test-concurrency=1 "src/**/*.test.ts"
 ✔ 短暂 network 失败后 BullMQ 重试成功并同步 retry_count
 ✔ 耗尽重试同时进入 BullMQ failed set 与 DB failed
 ✔ 新 Worker 可接手旧 Worker 关闭后留下的 waiting job
+✔ active job 所在 Worker 异常中断后由新 Worker 识别 stalled 并接管
 ✔ graceful shutdown 等待在途 crawl→normalize 完成
 ```
 
@@ -95,7 +96,9 @@ exit code: 1
 AssertionError: actual 'running' / expected 'failed'
 ```
 
-立即还原该临时改动后，完整 Worker 测试恢复 `32 pass / 0 fail / 0 skipped / 0 todo`，证明目标断言确实能捕获失败落库回归。
+立即还原该临时改动后，当时的完整 Worker 测试恢复 `32 pass / 0 fail / 0 skipped / 0 todo`，证明目标断言确实能捕获失败落库回归。
+
+2026-08-18 复验发现并修正两处验收缺口：删除 `crawl-once` 将已耗尽任务从 `failed` 回写为 `retrying` 的兼容分支，并把对应旧断言改为 BullMQ 与数据库均为 `failed`；新增真实 active job 异常中断、锁过期、stalled 检测与新 Worker 接管测试。随后为阶段 06 `crawl-once` 测试设置每轮唯一 queue prefix 并在正常退出时精确清理，避免中断测试污染默认 Stage 07 队列。修复后的完整 Worker 测试为 `33 pass / 0 fail / 0 skipped / 0 todo`。
 
 ## 5. 全量门禁
 
@@ -112,7 +115,7 @@ pnpm test -- --force
 crawler: 35 pass / 0 fail / 0 skipped / 0 todo
 DB: 4 pass / 0 fail / 0 skipped / 0 todo
 Web: 24 pass / 0 fail / 0 skipped / 0 todo
-Worker: 32 pass / 0 fail / 0 skipped / 0 todo
+Worker: 33 pass / 0 fail / 0 skipped / 0 todo
 Tasks: 7 successful, 7 total
 
 pnpm build -- --force
@@ -124,8 +127,8 @@ exit code: 0
 
 ## 6. 其余边界
 
-- 阶段 07 不改 DB schema/migration、阶段 05/06 旧测试、Web/Crawler/AI/UI；只在 Worker 组合现有 Adapter 和 DB 能力。
+- 阶段 07 不改 DB schema/migration、Web/Crawler/AI/UI；2026-08-18 仅修正 1 项阶段 06 Worker 旧断言，使其与耗尽任务必须落为 `failed` 的状态契约一致。
 - 不实现 AI 业务、Embedding、事件聚类、评分、日报或后台手动重跑。
 - 没有独立 DLQ；failed set 与 `crawl_tasks` 是当前失败查询面。
-- 为保持不可修改的阶段 06 9 项旧断言，`crawl-once` 的默认诊断配置让 SafeFetcher 自身完成一次内部网络重试后，把该诊断任务暴露为 `retrying`；常驻 Worker 和显式 `maxTaskRetries` 路径仍严格按 BullMQ attempts 将耗尽任务写为 `failed`。这不是第二套采集业务路径，只是旧诊断统计兼容边界。
-- 生产多进程部署、监控告警、Admin 重跑入口和更复杂的调度 leader 机制留后续阶段；本阶段已验证同 prefix 多 Worker 的 source lock、stalled/waiting 重启恢复和优雅关闭。
+- `crawl-once` 与常驻 Worker 现在遵循同一耗尽语义：BullMQ failed set 与 `crawl_tasks.status=failed` 一致，不再为旧诊断统计改写状态。
+- 生产多进程部署、监控告警、Admin 重跑入口和更复杂的调度 leader 机制留后续阶段；本阶段已验证同 prefix 多 Worker 的 source lock、waiting 接手、active→stalled 接管和优雅关闭。

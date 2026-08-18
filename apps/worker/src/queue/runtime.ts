@@ -35,6 +35,8 @@ export interface WorkerRuntimeOptions {
   backoffDelayMs?: number;
   schedulerIntervalMs?: number;
   drainTimeoutMs?: number;
+  lockDurationMs?: number;
+  stalledIntervalMs?: number;
 }
 
 interface RuntimeConfig {
@@ -45,6 +47,8 @@ interface RuntimeConfig {
   schedulerIntervalMs: number;
   drainTimeoutMs: number;
   lockTtlMs: number;
+  lockDurationMs: number;
+  stalledIntervalMs: number;
 }
 
 export interface ScheduledCrawl {
@@ -69,6 +73,8 @@ function runtimeConfig(options: WorkerRuntimeOptions): RuntimeConfig {
     schedulerIntervalMs: options.schedulerIntervalMs ?? defaults.schedulerIntervalMs,
     drainTimeoutMs: options.drainTimeoutMs ?? defaults.idleTimeoutMs,
     lockTtlMs: defaults.lockTtlMs,
+    lockDurationMs: options.lockDurationMs ?? 30_000,
+    stalledIntervalMs: options.stalledIntervalMs ?? 1_000,
   };
 }
 
@@ -143,7 +149,8 @@ export class WorkerRuntime {
           connection: workerConnection,
           prefix: this.config.queuePrefix,
           concurrency: this.config.concurrency,
-          stalledInterval: 1_000,
+          lockDuration: this.config.lockDurationMs,
+          stalledInterval: this.config.stalledIntervalMs,
           maxStalledCount: 2,
         },
       );
@@ -391,12 +398,12 @@ export class WorkerRuntime {
     this.scheduler = undefined;
   }
 
-  async close(options: { drain?: boolean } = {}): Promise<void> {
+  async close(options: { drain?: boolean; force?: boolean } = {}): Promise<void> {
     this.stopAccepting();
     if (options.drain !== false && this.started) {
       await this.waitForIdle(this.config.drainTimeoutMs).catch((error) => logger.error('优雅排空超时，继续关闭 Worker', error));
     }
-    await Promise.all(this.workers.map((worker) => worker.close()));
+    await Promise.all(this.workers.map((worker) => worker.close(options.force === true)));
     await Promise.all([...this.queues.values()].map((queue) => queue.close()));
     await Promise.all(this.workerConnections.map((connection) => connection.quit().catch(() => undefined)));
     await Promise.all(this.queueConnections.map((connection) => connection.quit().catch(() => undefined)));

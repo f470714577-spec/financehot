@@ -12,11 +12,12 @@
 - shared 已冻结版本化 job 名称、载荷、关联 ID 与未实现 job 拒绝契约；Worker 配置集中管理队列前缀、并发、重试、退避和保留策略。
 - Worker 已接入真实 Redis/BullMQ：启动调度到期 source，执行 `crawl → normalize`，同步 `crawl_tasks`，支持失败集、恢复、优雅关闭和重启续跑。
 - 同源锁、确定性 job ID、Raw `(source_id, content_hash)` 与 Article 三键查询/数据库唯一冲突兜底已完成；未生成独立 DLQ。
-- 新增真实 Redis+PostgreSQL Worker 测试后为 `32/32`，0 fail/skip/todo；阶段06旧 Worker 测试仍为 `9/9`，最终门禁与反向验证待收尾。
+- 新增真实 Redis+PostgreSQL Worker 测试后为 `33/33`，0 fail/skip/todo；其中阶段06 Worker 测试仍为 `9/9`。
 - 现役文档与 `docs/acceptance/phase-07.md` 已更新，记录拓扑、状态职责、参数、红→绿、失败集、重试、重启和边界。
-- 修复后真实回归：Worker `32/32`，0 fail/skip/todo；日志已见首次 network 失败、attempt=2 成功、耗尽 attempt=2 进入 failed。
+- 修复后真实回归：Worker `33/33`，0 fail/skip/todo；日志已见首次 network 失败、attempt=2 成功、耗尽 attempt=2 进入 failed，以及 active job 异常中断后由新 Worker 识别 stalled 并接管。
 - 反向验证已完成：临时跳过耗尽后的 DB failed 写入，目标测试以退出码 `1` 失败（实际值 `running`、期望 `failed`）；代码已立即还原。
-- 全量强制门禁已绿：lint/typecheck/build 各 `7/7`，test crawler `35`、Worker `32`、DB `4`、Web `24` 全部通过且 0 skip/todo，`git diff --check` 退出 0。
+- 2026-08-18 验收修复：删除 `crawl-once` 将耗尽失败回写为 `retrying` 的兼容逻辑，统一 BullMQ failed set 与数据库 `failed`；补充真实 active→stalled→新 Worker 接管测试；阶段06测试改用每轮唯一 queue prefix，避免中断测试污染默认队列。
+- 全量强制门禁已绿：lint/typecheck/build 各 `7/7`，test crawler `35`、Worker `33`、DB `4`、Web `24` 全部通过且 0 skip/todo，`git diff --check` 退出 0。
 - 阶段07当前阻塞：无；白名单/敏感文件复核通过，本地提交已创建；不 push、不部署、不清库，提交哈希以 `git log -1` 为准。
 
 - 2026-08-16 开工回执：把阶段 04 验收为可复核的本地稳定基线。

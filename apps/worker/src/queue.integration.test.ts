@@ -440,6 +440,71 @@ describe('阶段07真实 Redis + PostgreSQL BullMQ 集成', { concurrency: false
     }
   });
 
+  test('active job 所在 Worker 异常中断后由新 Worker 识别 stalled 并接管', async () => {
+    const prefix = `${suitePrefix}-${++testNumber}-stalled-recovery`;
+    const sourceIds: string[] = [];
+    let signalActive!: () => void;
+    const active = new Promise<void>((resolvePromise) => { signalActive = resolvePromise; });
+    const hungFetcher = new SafeFetcher({
+      resolve: async () => [{ address: '93.184.216.34', family: 4 }],
+      request: async () => {
+        signalActive();
+        return new Promise<RawHttpResponse>(() => undefined);
+      },
+      defaultMaxAttempts: 1,
+      minIntervalMs: 0,
+    });
+    const recoveredFixture = fixtureFetcher(fixtureXml('stalled-recovery'));
+    const runtimeA = createWorkerRuntime({
+      db: connection.db,
+      redisUrl,
+      fetcher: hungFetcher,
+      queuePrefix: prefix,
+      lockDurationMs: 300,
+      stalledIntervalMs: 100,
+      drainTimeoutMs: 10_000,
+    });
+    const sourceRows = await connection.db.insert(sources).values({
+      name: `${prefix}-source`, type: 'rss', country: 'US', language: 'en', source_level: 'E', enabled: true, crawl_interval: 1,
+      adapter_config: { kind: 'rss', feedUrl: 'https://fixture.example/feed.xml' },
+    }).returning();
+    sourceIds.push(sourceRows[0].id);
+    try {
+      await runtimeA.start({ schedule: false });
+      const scheduled = await runtimeA.enqueueCrawl(sourceRows[0].id, new Date('2026-08-17T16:30:00.000Z'));
+      await Promise.race([
+        active,
+        wait(2_000).then(() => { throw new Error('crawl job 未进入 active'); }),
+      ]);
+      assert.equal(await (await runtimeA.getJob('crawl', scheduled.jobId))?.getState(), 'active');
+      assert.equal((await taskById(scheduled.crawlTaskId)).status, 'running');
+      await runtimeA.close({ drain: false, force: true });
+
+      const runtimeB = createWorkerRuntime({
+        db: connection.db,
+        redisUrl,
+        fetcher: recoveredFixture.fetcher,
+        queuePrefix: prefix,
+        lockDurationMs: 300,
+        stalledIntervalMs: 100,
+        drainTimeoutMs: 10_000,
+      });
+      try {
+        await runtimeB.start({ schedule: false });
+        await runtimeB.waitForIdle();
+        assert.equal((await taskById(scheduled.crawlTaskId)).status, 'success');
+        assert.equal(await (await runtimeB.getJob('crawl', scheduled.jobId))?.getState(), 'completed');
+        assert.equal(recoveredFixture.calls(), 1);
+      } finally {
+        await runtimeB.close({ drain: true });
+      }
+    } finally {
+      await runtimeA.close({ drain: false, force: true });
+      await cleanupFixtures(sourceIds);
+      await cleanupQueuePrefix(prefix);
+    }
+  });
+
   test('graceful shutdown 等待在途 crawl→normalize 完成', async () => {
     const fixture = fixtureFetcher(fixtureXml('graceful'), undefined, 80);
     await withRuntime('graceful', { fetcher: fixture.fetcher }, async (runtime, createSource) => {

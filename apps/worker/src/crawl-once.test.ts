@@ -5,6 +5,7 @@ import { after, afterEach, before, describe, test } from 'node:test';
 
 import { CrawlerError, SafeFetcher, type RawHttpResponse } from '@financehot/crawler';
 import { eq, inArray } from 'drizzle-orm';
+import Redis from 'ioredis';
 import { articles, createDb, crawl_tasks, raw_articles, sources } from '@financehot/db';
 
 import { crawlOnce } from './crawl-once';
@@ -14,6 +15,7 @@ if (existsSync(envFile)) process.loadEnvFile(envFile);
 const databaseUrl = process.env.DATABASE_URL ?? 'postgresql://financehot:financehot@localhost:5433/financehot';
 const connection = createDb(databaseUrl);
 const prefix = `stage06-test-${Date.now()}`;
+const queuePrefix = `${prefix}-queue`;
 const createdSourceIds: string[] = [];
 
 const fixtureXml = `<?xml version="1.0"?><rss version="2.0"><channel><item><title>Fixture market release</title><link>https://fixture.example/article/one</link><description>Fixture excerpt only</description><pubDate>Mon, 17 Aug 2026 00:00:00 GMT</pubDate></item></channel></rss>`;
@@ -56,6 +58,20 @@ function fixtureFetcher(calls: string[], body = fixtureXml) {
   });
 }
 
+async function cleanupQueuePrefix() {
+  const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', { maxRetriesPerRequest: null });
+  try {
+    let cursor = '0';
+    do {
+      const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', `${queuePrefix}:*`, 'COUNT', 200);
+      cursor = nextCursor;
+      if (keys.length) await redis.del(...keys);
+    } while (cursor !== '0');
+  } finally {
+    await redis.quit().catch(() => undefined);
+  }
+}
+
 describe('worker crawl-once PostgreSQL 集成', { concurrency: false }, () => {
   before(async () => {
     await connection.db.execute('select 1');
@@ -74,13 +90,14 @@ describe('worker crawl-once PostgreSQL 集成', { concurrency: false }, () => {
       await connection.db.delete(crawl_tasks).where(inArray(crawl_tasks.source_id, createdSourceIds));
       await connection.db.delete(sources).where(inArray(sources.id, createdSourceIds));
     }
+    await cleanupQueuePrefix();
     await connection.pool.end();
   });
 
   test('禁用 source 不产生 task 且外部请求为 0', async () => {
     const source = await createSource({ enabled: false });
     const calls: string[] = [];
-    const stats = await crawlOnce({ db: connection.db, fetcher: fixtureFetcher(calls), now: () => new Date('2026-08-17T00:00:00Z') });
+    const stats = await crawlOnce({ db: connection.db, fetcher: fixtureFetcher(calls), now: () => new Date('2026-08-17T00:00:00Z'), queuePrefix });
     assert.equal(stats.sourcesDue, 0);
     assert.equal(stats.tasksCreated, 0);
     assert.equal(calls.length, 0);
@@ -90,7 +107,7 @@ describe('worker crawl-once PostgreSQL 集成', { concurrency: false }, () => {
   test('缺少 adapter_config 的 enabled source 只记录 failed task，不请求外网', async () => {
     await createSource({ adapter_config: null });
     const calls: string[] = [];
-    const stats = await crawlOnce({ db: connection.db, fetcher: fixtureFetcher(calls), now: () => new Date('2026-08-17T01:00:00Z') });
+    const stats = await crawlOnce({ db: connection.db, fetcher: fixtureFetcher(calls), now: () => new Date('2026-08-17T01:00:00Z'), queuePrefix });
     assert.equal(stats.tasksFailed, 1);
     assert.equal(calls.length, 0);
     const task = await connection.db.select().from(crawl_tasks).where(eq(crawl_tasks.source_id, createdSourceIds[1])).limit(1);
@@ -101,7 +118,7 @@ describe('worker crawl-once PostgreSQL 集成', { concurrency: false }, () => {
   test('真实 Adapter + PostgreSQL 事务先 Raw 后 Article', async () => {
     const source = await createSource();
     const calls: string[] = [];
-    const stats = await crawlOnce({ db: connection.db, fetcher: fixtureFetcher(calls, uniqueFixtureXml('transaction')), now: () => new Date('2026-08-17T02:00:00Z') });
+    const stats = await crawlOnce({ db: connection.db, fetcher: fixtureFetcher(calls, uniqueFixtureXml('transaction')), now: () => new Date('2026-08-17T02:00:00Z'), queuePrefix });
     assert.equal(stats.tasksSuccess, 1);
     assert.equal(stats.rawInserted, 1);
     assert.equal(stats.articlesInserted, 1);
@@ -120,9 +137,9 @@ describe('worker crawl-once PostgreSQL 集成', { concurrency: false }, () => {
     const calls: string[] = [];
     const fetcher = fixtureFetcher(calls, uniqueFixtureXml('idempotent'));
     const base = new Date('2026-08-17T03:00:00Z').getTime();
-    const first = await crawlOnce({ db: connection.db, fetcher, now: () => new Date(base) });
-    const second = await crawlOnce({ db: connection.db, fetcher, now: () => new Date(base + 2_000) });
-    const third = await crawlOnce({ db: connection.db, fetcher, now: () => new Date(base + 4_000) });
+    const first = await crawlOnce({ db: connection.db, fetcher, now: () => new Date(base), queuePrefix });
+    const second = await crawlOnce({ db: connection.db, fetcher, now: () => new Date(base + 2_000), queuePrefix });
+    const third = await crawlOnce({ db: connection.db, fetcher, now: () => new Date(base + 4_000), queuePrefix });
     assert.deepEqual([first.articlesInserted, second.articlesInserted, third.articlesInserted], [1, 0, 0], JSON.stringify({ first, second, third }));
     assert.deepEqual([second.rawExisting, third.rawExisting], [1, 1]);
     assert.equal(calls.length, 3);
@@ -151,8 +168,8 @@ describe('worker crawl-once PostgreSQL 集成', { concurrency: false }, () => {
     const second = await createSource();
     const calls: string[] = [];
     const fetcher = fixtureFetcher(calls, uniqueFixtureXml('cross-source'));
-    await crawlOnce({ db: connection.db, fetcher, now: () => new Date('2026-08-17T04:00:00Z') });
-    await crawlOnce({ db: connection.db, fetcher, now: () => new Date('2026-08-17T04:00:02Z') });
+    await crawlOnce({ db: connection.db, fetcher, now: () => new Date('2026-08-17T04:00:00Z'), queuePrefix });
+    await crawlOnce({ db: connection.db, fetcher, now: () => new Date('2026-08-17T04:00:02Z'), queuePrefix });
     const firstArticle = await connection.db.select().from(articles).where(eq(articles.source_id, first.id));
     const secondRaw = await connection.db.select().from(raw_articles).where(eq(raw_articles.source_id, second.id));
     assert.equal(firstArticle.length, 1);
@@ -160,7 +177,7 @@ describe('worker crawl-once PostgreSQL 集成', { concurrency: false }, () => {
     assert.equal(secondRaw[0].duplicate_of_article_id, firstArticle[0].id);
   });
 
-  test('网络瞬断耗尽后记录 retrying、retry_count 和错误分类', async () => {
+  test('网络重试耗尽后记录 failed、retry_count 和错误分类', async () => {
     const source = await createSource({ name: `${prefix}-retry` });
     const calls: string[] = [];
     const fetcher = new SafeFetcher({
@@ -168,11 +185,12 @@ describe('worker crawl-once PostgreSQL 集成', { concurrency: false }, () => {
       request: async () => { calls.push('request'); throw new CrawlerError('socket reset', 'network', true); },
       sleep: async () => undefined,
     });
-    const stats = await crawlOnce({ db: connection.db, fetcher, now: () => new Date('2026-08-17T05:00:00Z') });
-    assert.equal(stats.tasksRetrying, 1);
+    const stats = await crawlOnce({ db: connection.db, fetcher, now: () => new Date('2026-08-17T05:00:00Z'), queuePrefix });
+    assert.equal(stats.tasksFailed, 1);
+    assert.equal(stats.tasksRetrying, 0);
     assert.equal(calls.length, 3);
     const task = await connection.db.select().from(crawl_tasks).where(eq(crawl_tasks.source_id, source.id)).limit(1);
-    assert.equal(task[0].status, 'retrying');
+    assert.equal(task[0].status, 'failed');
     assert.equal(task[0].retry_count, 1);
     assert.match(task[0].error ?? '', /network/);
   });
@@ -188,7 +206,7 @@ describe('worker crawl-once PostgreSQL 集成', { concurrency: false }, () => {
       resolve: async () => [{ address: '93.184.216.34', family: 4 }],
       request: async (url) => { calls.push(url.toString()); return fixtureResponse('{"data":{}}', 'application/json'); },
     });
-    const stats = await crawlOnce({ db: connection.db, fetcher, now: () => new Date('2026-08-17T06:00:00Z') });
+    const stats = await crawlOnce({ db: connection.db, fetcher, now: () => new Date('2026-08-17T06:00:00Z'), queuePrefix });
     assert.equal(stats.tasksFailed, 1);
     assert.equal(calls.length, 1);
     const task = await connection.db.select().from(crawl_tasks).where(eq(crawl_tasks.source_id, source.id)).limit(1);
@@ -201,9 +219,9 @@ describe('worker crawl-once PostgreSQL 集成', { concurrency: false }, () => {
     const calls: string[] = [];
     const fetcher = fixtureFetcher(calls, uniqueFixtureXml('due'));
     const base = new Date('2026-08-17T07:00:00Z').getTime();
-    await crawlOnce({ db: connection.db, fetcher, now: () => new Date(base) });
-    const notDue = await crawlOnce({ db: connection.db, fetcher, now: () => new Date(base + 30_000) });
-    const due = await crawlOnce({ db: connection.db, fetcher, now: () => new Date(base + 61_000) });
+    await crawlOnce({ db: connection.db, fetcher, now: () => new Date(base), queuePrefix });
+    const notDue = await crawlOnce({ db: connection.db, fetcher, now: () => new Date(base + 30_000), queuePrefix });
+    const due = await crawlOnce({ db: connection.db, fetcher, now: () => new Date(base + 61_000), queuePrefix });
     assert.equal(notDue.sourcesDue, 0);
     assert.equal(notDue.requests, 0);
     assert.equal(due.sourcesDue, 1);
@@ -214,7 +232,7 @@ describe('worker crawl-once PostgreSQL 集成', { concurrency: false }, () => {
     const source = await createSource({ name: `${prefix}-state` });
     const calls: string[] = [];
     const successAt = new Date('2026-08-17T08:00:00Z');
-    await crawlOnce({ db: connection.db, fetcher: fixtureFetcher(calls, uniqueFixtureXml('state')), now: () => successAt });
+    await crawlOnce({ db: connection.db, fetcher: fixtureFetcher(calls, uniqueFixtureXml('state')), now: () => successAt, queuePrefix });
     const successSource = await connection.db.select().from(sources).where(eq(sources.id, source.id));
     assert.equal(successSource[0].last_crawled_at?.toISOString(), successAt.toISOString());
     assert.ok(calls.length > 0);

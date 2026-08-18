@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 
 import { SafeFetcher } from '@financehot/crawler';
 import { type Db, crawl_tasks } from '@financehot/db';
@@ -52,19 +52,9 @@ export async function crawlOnce(options: CrawlOnceOptions): Promise<CrawlOnceSta
     const scheduled = await runtime.scheduleDueSources(startedAt);
     await runtime.waitForIdle();
     const taskIds = scheduled.map((item) => item.crawlTaskId);
-    let tasks = taskIds.length
+    const tasks = taskIds.length
       ? await options.db.select().from(crawl_tasks).where(inArray(crawl_tasks.id, taskIds))
       : [];
-    const legacyRetrying = tasks.filter((task) => task.status === 'failed' && /^(network|timeout|http)/.test(task.error ?? ''));
-    if (options.maxTaskRetries === undefined && legacyRetrying.length) {
-      const retryingAt = now();
-      for (const task of legacyRetrying) {
-        await options.db.update(crawl_tasks).set({ status: 'retrying', retry_count: 1, finished_at: null, updated_at: retryingAt }).where(eq(crawl_tasks.id, task.id));
-      }
-      tasks = tasks.map((task) => legacyRetrying.some((candidate) => candidate.id === task.id)
-        ? { ...task, status: 'retrying' as const, retry_count: 1 }
-        : task);
-    }
     const metrics = runtime.metricsFor(taskIds);
     return {
       startedAt: startedAt.toISOString(),

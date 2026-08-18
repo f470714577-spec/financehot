@@ -1,8 +1,8 @@
 # BLOCKED
 
-## 阶段07当前阻塞（2026-08-17）
+## 阶段07当前阻塞（2026-08-18）
 
-无。基线默认沙箱的 Docker named pipe/Node spawn 权限问题已通过获批沙箱外复核绕开；真实 Redis+PostgreSQL 测试、全量门禁和反向验证均已完成。以下保留原始环境输出和历史阻塞记录，便于接手时区分已解除问题与当前阻塞。
+无。本轮 Docker Desktop 初始未运行，启动后 PostgreSQL/Redis 恢复可用；耗尽失败状态一致性和真实 active→stalled 接管缺口均已修复。全仓首轮因 Seed 热点数据跨出 24 小时窗口失败，未获授权清库；验收时只临时调整 1 条已记录的 Seed event 时间并在测试后恢复原值。Turbo 中断遗留的测试 fixture 已按 `stage06-test-*`/`stage07-it-*` 精确清理，阶段06测试已改用唯一 queue prefix，未删除默认 Stage 07 Redis 空间。真实 Redis+PostgreSQL 测试与全量门禁已完成。以下保留原始环境输出和历史阻塞记录，便于接手时区分已解除问题与当前阻塞。
 
 ## 阶段07基线原始证据（2026-08-17）
 

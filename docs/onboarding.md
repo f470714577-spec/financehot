@@ -42,7 +42,7 @@ pnpm test        # 数据库包需要已迁移并完成 Seed 的 PostgreSQL
 pnpm build
 ```
 
-2026-08-17 最近复验：crawler 测试 35/35、worker 测试 32/32、数据库测试 4/4、Web 测试 24/24 均通过，0 fail/skip/todo；阶段07真实 Redis+PostgreSQL crawl→normalize、重试、失败集和重启恢复证据见 [`docs/acceptance/phase-07.md`](./acceptance/phase-07.md)。
+2026-08-18 最近复验：crawler 测试 35/35、worker 测试 33/33、数据库测试 4/4、Web 测试 24/24 均通过，0 fail/skip/todo；阶段07真实 Redis+PostgreSQL crawl→normalize、重试、失败集和 active→stalled 接管证据见 [`docs/acceptance/phase-07.md`](./acceptance/phase-07.md)。
 
 ## 5. 启动
 
