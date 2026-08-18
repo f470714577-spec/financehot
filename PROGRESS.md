@@ -17,7 +17,7 @@
 - 完成审计发现并修正 schema/migration 漂移：`ai_tasks` 与 `ai_usage` 的 Article 外键均由 schema 声明并由 `0004/0005` migration 应用 `ON DELETE CASCADE`；DB 约束只读复核通过。清理唯一受控测试残留后 Worker 重跑 `34/34`。
 - 反向验证已完成：临时放开成功任务保护时目标测试 `actual 51 / expected 37`、退出码 1；立即还原后同命令 `1 pass / 0 fail / 0 skip / 0 todo`、退出码 0。
 - 根级 `pnpm lint -- --force`、`pnpm typecheck -- --force` 和获批沙箱外 `pnpm build -- --force` 均 `7/7 successful`、退出码 0；根级 `pnpm test -- --force` 的其他包通过，但 Web 为 `23 pass / 1 fail`，退出码 1，原始失败已记录于 BLOCKED.md。
-- 当前未完成：本轮 schema/migration 修正的本地提交和提交后工作树复核；真实模型质量未验收。Web/全量 test 受既有 Seed 时间窗口失败影响，按任务书停止受影响工作。
+- 本轮 schema/migration 修正已创建本地提交，提交后工作树复核进行中；真实模型质量未验收。Web/全量 test 受既有 Seed 时间窗口失败影响，按任务书停止受影响工作。
 
 ## 阶段07开工回执
 - 目标：把阶段06同步采集改成 BullMQ 驱动的 crawl→normalize 可靠流水线，保证重试、恢复、追踪和幂等。
