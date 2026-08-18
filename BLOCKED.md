@@ -32,6 +32,10 @@ hot_24h: 0
 
 因此不能通过改时钟、改 Seed 或临时伪造热点记录满足旧测试；这些操作均越过本阶段边界。
 
+## 阶段08依赖声明与白名单冲突（2026-08-18）
+
+阶段08 Worker 运行代码真实 import `@financehot/ai`，并在 `apps/worker/src/ai-pipeline.ts` 使用 `zod` 类型；干净 pnpm workspace 需要在 `apps/worker/package.json` 声明这两个依赖。但任务书的硬白名单只列出 `packages/*/package.json`，未授权修改 `apps/worker/package.json`。`pnpm-lock.yaml` 只能锁定 importer，不能替代 package manifest；删除该声明会使干净安装无法解析 Worker 的 AI 依赖。当前实现保留这两项必要声明以维持可运行性，并记录为未获授权的边界缺口；未擅自通过相对路径或重复代码规避该冲突。
+
 ## 阶段08开工原始阻塞证据（2026-08-18）
 
 任务书要求的原始命令与输出如下；未执行 seed、清库或写入数据库：
