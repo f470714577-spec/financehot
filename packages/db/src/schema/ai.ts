@@ -49,7 +49,7 @@ export const ai_usage = pgTable(
     provider: text('provider'),
     model: text('model'),
     task_type: text('task_type'),
-    article_id: uuid('article_id').references(() => articles.id),
+    article_id: uuid('article_id').references(() => articles.id, { onDelete: 'cascade' }),
     attempt: integer('attempt').notNull().default(1),
     prompt_tokens: integer('prompt_tokens').notNull().default(0),
     completion_tokens: integer('completion_tokens').notNull().default(0),

@@ -42,7 +42,7 @@ pnpm test        # 数据库包需要已迁移并完成 Seed 的 PostgreSQL
 pnpm build
 ```
 
-2026-08-18 最近复验：阶段07历史基线为 crawler 35、worker 33、数据库 4、Web 24；阶段08 AI Provider 测试 7/7 已全绿。真实 Redis/PostgreSQL 十条样本与全量门禁受 Docker named pipe 阻塞，原始证据见 [`BLOCKED.md`](../BLOCKED.md) 和 [`docs/acceptance/phase-08.md`](./acceptance/phase-08.md)。
+2026-08-18 最近复验：Docker PostgreSQL/Redis 已恢复；阶段08 AI Provider 7/7、Worker 34/34、crawler 35/35、数据库 4/4 全绿，十条英文 Article 的真实队列/数据库验收已完成。Web 历史基线为 23 pass、1 fail，失败是热点时间窗口 Seed 为空；全量门禁因此不宣称完成。原始证据见 [`BLOCKED.md`](../BLOCKED.md) 和 [`docs/acceptance/phase-08.md`](./acceptance/phase-08.md)。
 
 ## 5. 启动
 

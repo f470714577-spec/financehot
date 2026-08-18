@@ -27,18 +27,119 @@ node packages/ai/src/provider.test.ts
 ℹ todo 0
 ```
 
-Worker、DB、AI 直接 TypeScript 检查已退出 0；完整 `pnpm` 门禁仍待依赖服务恢复后按任务书复跑。
+AI、Worker、DB 直接 TypeScript 检查已退出 0；真实服务恢复后的包级测试见下文。
 
-## 真实服务验收命令与待填输出
+## 真实 PostgreSQL/Redis 与 migration
 
 ```text
 docker compose up -d postgres redis
+postgres  Running (healthy), 5433->5432
+redis     Running (healthy), 6379->6379
+
 pnpm --filter @financehot/db db:migrate
+Using 'pg' driver for database querying
+[✓] migrations applied successfully!
+
 $env:CI=true; pnpm --filter @financehot/worker test -- --force
 ```
 
-目标：至少 10 条英文 Article，其中 2 条非财经、1 条 Prompt Injection；真实 Redis/PostgreSQL 队列完成，中文标题/摘要/分类/reason 落库，原文字段零覆盖，过滤内容不出现在 `listNews`，失败进入 retry/failed，重复入队 usage 与 HTTP 调用数都不增加。
+## 真实队列与数据库端到端证据
+
+测试入口为 `apps/worker/src/ai-pipeline.integration.test.ts`，使用真实 PostgreSQL/Redis、真实 Worker/BullMQ、真实数据库 Schema 和本地受控 OpenAI-compatible HTTP Provider；受控服务只模拟外部协议，不替换流水线核心。
+
+```text
+pnpm --filter @financehot/worker exec tsx --test --test-concurrency=1 src/ai-pipeline.integration.test.ts
+✔ 真实 Redis/PostgreSQL + 受控 OpenAI-compatible HTTP 完成十条 Article 的 AI 流水线与缓存验收
+ℹ tests 1
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+```
+
+该测试实际断言：10 条英文 Article 中 2 条非财经进入 `filtered_out` 且隐藏，7 条财经 Article 完成中文标题、80–180 字摘要、reason、分类和国家关系；1 条受控失败在 `retry_count=2` 后为 `failed`；Prompt Injection 仅作为正文内容；原始标题/摘要保持不变；过滤 Article 不出现在 `listNews`；重复成功任务不增加 `ai_usage`，也不增加受控 HTTP 请求。
+
+恢复后的包级回归：
+
+```text
+$env:CI='true'; pnpm --filter @financehot/worker test -- --force
+ℹ tests 34
+ℹ pass 34
+ℹ fail 0
+ℹ skipped 0
+ℹ todo 0
+
+pnpm --filter @financehot/db test -- --force
+ℹ tests 4
+ℹ pass 4
+ℹ fail 0
+ℹ skipped 0
+ℹ todo 0
+
+pnpm --filter @financehot/crawler test -- --force
+ℹ tests 35
+ℹ pass 35
+ℹ fail 0
+ℹ skipped 0
+ℹ todo 0
+```
+
+## 缓存保护反向验证：红 → 绿
+
+临时把成功任务的短路保护改为允许再次执行，未改测试、未改数据库数据；目标测试实际以 usage 增长退出 1：
+
+```text
+pnpm --filter @financehot/worker exec tsx --test --test-concurrency=1 src/ai-pipeline.integration.test.ts
+✖ 真实 Redis/PostgreSQL + 受控 OpenAI-compatible HTTP 完成十条 Article 的 AI 流水线与缓存验收
+AssertionError [ERR_ASSERTION]
+51 !== 37
+command failed exit code 1
+```
+
+立即还原保护后，重跑同一命令全绿：
+
+```text
+✔ 真实 Redis/PostgreSQL + 受控 OpenAI-compatible HTTP 完成十条 Article 的 AI 流水线与缓存验收
+ℹ tests 1
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+```
+
+## 根级工程门禁
+
+```text
+$env:CI='true'; pnpm lint -- --force
+Tasks: 7 successful, 7 total
+exit code 0
+
+$env:CI='true'; pnpm typecheck -- --force
+Tasks: 7 successful, 7 total
+exit code 0
+
+$env:CI='true'; pnpm build -- --force  # 获批沙箱外复跑
+Tasks: 7 successful, 7 total
+exit code 0
+```
+
+根级测试实际结果如下；除 Web 外的包均通过，Web 的既有时间窗口失败使根级 test 退出 1：
+
+```text
+$env:CI='true'; pnpm test -- --force
+Tasks: 5 successful, 7 total
+Failed: @financehot/web#test
+@financehot/web:test: ℹ tests 24
+@financehot/web:test: ℹ pass 23
+@financehot/web:test: ℹ fail 1
+@financehot/web:test: ℹ skipped 0
+@financehot/web:test: ℹ todo 0
+ERROR: run failed
+exit code 1
+```
 
 ## 当前实际阻塞
 
-2026-08-18 继续复核时，`docker compose ps` 仍返回 Docker Desktop Linux engine named pipe 不存在；`com.docker.service` 为 `Stopped` 且无法启动，Docker Desktop 可执行文件路径不存在，5433/6379 均未监听。`CI=true pnpm --filter @financehot/db db:migrate` 只进入 `Recreating ...\node_modules`，未到数据库连接阶段；`corepack enable` 也因命令不存在退出 1。全量基线首轮还出现 Node `spawn EPERM`。原始输出已置于 `BLOCKED.md` 顶部，恢复后必须补写红→绿和全量门禁原始输出。
+2026-08-18 Docker Desktop 已从 `F:\DOCKER\DockerDesktop\Docker Desktop.exe` 启动，PostgreSQL/Redis 均 healthy，0003/0004 migration 已成功。Worker `34/34`、DB `4/4`、crawler `35/35` 全绿；Web 历史基线为 `23 pass / 1 fail`，失败是热点时间窗口 Seed 为空，原始输出已置于 `BLOCKED.md` 顶部。Web/全量门禁受该既有数据问题影响，未修改 Web、Seed 或旧测试。没有真实模型密钥，因此真实模型质量未验收。

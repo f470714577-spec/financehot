@@ -29,6 +29,13 @@
       "when": 1787056000000,
       "tag": "0003_stage08_ai_pipeline",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787056800000,
+      "tag": "0004_ai_tasks_article_cascade",
+      "breakpoints": true
     }
   ]
 }

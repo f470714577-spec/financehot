@@ -1,5 +1,27 @@
 # BLOCKED
 
+## 阶段08真实服务恢复后基线不符（2026-08-18）
+
+Docker/Redis/PostgreSQL 已恢复且 migration 成功后，按原入口复跑 Web 历史基线；结果低于任务书要求的 Web 24，停止 Web/全量门禁相关工作，未修改 Web、Seed、旧测试或清库：
+
+```text
+$env:CI='true'; pnpm --filter @financehot/web test -- --force
+ℹ tests 24
+ℹ pass 23
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+
+失败：阶段 05 PostgreSQL Route Handler 集成测试 / 热点榜只接受规定时间窗口
+AssertionError: assert.ok(data.items.length > 0)
+实际返回热点 items 为空，退出码 1。
+```
+
+该失败与阶段08改动无关，疑似现有 Seed 时间窗口相对当前时间已过期；任务书禁止重做 Seed/清库，因此不擅自修复或调整数据。阶段08 Worker/DB/crawler 继续按不受影响范围验证。
+
+根级强制测试复跑确认同一阻塞：`Tasks: 5 successful, 7 total`，失败仅为 `@financehot/web#test`，Web 为 `23 pass / 1 fail / 0 skipped / 0 todo`，退出码 1；根级 lint/typecheck/build 已分别 `7/7` 成功，build 在获批沙箱外复跑退出 0。
+
 ## 阶段08开工原始阻塞证据（2026-08-18）
 
 任务书要求的原始命令与输出如下；未执行 seed、清库或写入数据库：
