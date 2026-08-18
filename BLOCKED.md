@@ -22,6 +22,16 @@ AssertionError: assert.ok(data.items.length > 0)
 
 根级强制测试复跑确认同一阻塞：`Tasks: 5 successful, 7 total`，失败仅为 `@financehot/web#test`，Web 为 `23 pass / 1 fail / 0 skipped / 0 todo`，退出码 1；根级 lint/typecheck/build 已分别 `7/7` 成功，build 在获批沙箱外复跑退出 0。
 
+只读 PostgreSQL 根因核对（未修改数据）：
+
+```text
+db_now: 2026-08-18 14:29:50+00
+latest event last_seen_at: 2026-08-17 06:42:20+00
+hot_24h: 0
+```
+
+因此不能通过改时钟、改 Seed 或临时伪造热点记录满足旧测试；这些操作均越过本阶段边界。
+
 ## 阶段08开工原始阻塞证据（2026-08-18）
 
 任务书要求的原始命令与输出如下；未执行 seed、清库或写入数据库：

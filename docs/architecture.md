@@ -205,7 +205,7 @@ sources 1 ── N raw_articles 0..1 ── 1 articles N ── N sources
 
 **ai_tasks**（细粒度 AI 任务状态）
 
-- 主键 `id`；阶段 08 增加 `cache_key`、`result_json`；缓存键包含 article、task_type、input_hash、prompt_version、provider、model，并设置唯一约束。字段：task_type(financial-filter/translate/summarize/classify/entity-extraction/finance-score/market-impact/event-cluster/daily-report), article_id(FK 可空), event_id(FK 可空), status(pending/running/success/failed/retrying), prompt_version, model, provider, input_hash, error, retry_count, created_at, updated_at。Article 删除时其 AI 任务级联删除，避免旧测试和生命周期清理留下孤儿任务。
+- 主键 `id`；阶段 08 增加 `cache_key`、`result_json`；缓存键包含 article、task_type、input_hash、prompt_version、provider、model，并设置唯一约束。字段：task_type(financial-filter/translate/summarize/classify/entity-extraction/finance-score/market-impact/event-cluster/daily-report), article_id(FK 可空), event_id(FK 可空), status(pending/running/success/failed/retrying), prompt_version, model, provider, input_hash, error, retry_count, created_at, updated_at。Article 删除时其 AI 任务和调用用量记录级联删除，避免生命周期清理留下孤儿 AI 记录。
 - 索引：status、article_id、task_type
 - **不承担 Pipeline 粗粒度状态**——粗粒度由 `articles.processing_status` 表达
 

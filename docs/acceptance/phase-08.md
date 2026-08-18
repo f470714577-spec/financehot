@@ -40,6 +40,10 @@ pnpm --filter @financehot/db db:migrate
 Using 'pg' driver for database querying
 [✓] migrations applied successfully!
 
+本轮完成审计新增 `0005_ai_usage_article_cascade.sql`；只读核对已应用外键：
+ai_tasks.article_id  REFERENCES articles(id) ON DELETE CASCADE
+ai_usage.article_id  REFERENCES articles(id) ON DELETE CASCADE
+
 $env:CI=true; pnpm --filter @financehot/worker test -- --force
 ```
 
@@ -84,6 +88,8 @@ pnpm --filter @financehot/crawler test -- --force
 ℹ skipped 0
 ℹ todo 0
 ```
+
+首次回归发现的是上一次异常中断留下的唯一 `stage08-it-* / controlled.example/article/*` 测试残留；只读核对后按精确 source 名清理，结果 `remaining_articles=0`、`remaining_sources=0`，随后 Worker 全量重跑为 `34 pass / 0 fail / 0 skip / 0 todo`。未清理 Seed 或其他 Article。
 
 ## 缓存保护反向验证：红 → 绿
 
@@ -142,4 +148,4 @@ exit code 1
 
 ## 当前实际阻塞
 
-2026-08-18 Docker Desktop 已从 `F:\DOCKER\DockerDesktop\Docker Desktop.exe` 启动，PostgreSQL/Redis 均 healthy，0003/0004 migration 已成功。Worker `34/34`、DB `4/4`、crawler `35/35` 全绿；Web 历史基线为 `23 pass / 1 fail`，失败是热点时间窗口 Seed 为空，原始输出已置于 `BLOCKED.md` 顶部。Web/全量门禁受该既有数据问题影响，未修改 Web、Seed 或旧测试。没有真实模型密钥，因此真实模型质量未验收。
+2026-08-18 Docker Desktop 已从 `F:\DOCKER\DockerDesktop\Docker Desktop.exe` 启动，PostgreSQL/Redis 均 healthy，0003/0004/0005 migration 已成功。Worker `34/34`、DB `4/4`、crawler `35/35` 全绿；Web 历史基线为 `23 pass / 1 fail`，失败是热点时间窗口 Seed 为空，原始输出已置于 `BLOCKED.md` 顶部。Web/全量门禁受该既有数据问题影响，未修改 Web、Seed 或旧测试。没有真实模型密钥，因此真实模型质量未验收。

@@ -18,7 +18,7 @@ export const ai_tasks = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     task_type: text('task_type').notNull().$type<AiTaskType>(),
-    article_id: uuid('article_id').references(() => articles.id),
+    article_id: uuid('article_id').references(() => articles.id, { onDelete: 'cascade' }),
     event_id: uuid('event_id').references(() => events.id),
     status: text('status').notNull().$type<TaskStatus>().default('pending'),
     prompt_version: text('prompt_version'),

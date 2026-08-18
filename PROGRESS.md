@@ -12,11 +12,12 @@
 - Worker 已启用 `ai_process`：新 Article 创建 financial-filter，成功后依次入队 translate、summarize、classify、entity-extraction；非财经保留并隐藏。
 - Worker 的 AI 任务抢占已用 `UPDATE ... WHERE status IN (pending,retrying)` 的返回行区分真正获得执行权者，竞争执行者不调用模型；成功结果仍以 cache_key 与 task 状态短路。
 - 已新增本地受控 HTTP Provider 的真实 Redis/PostgreSQL 集成测试，覆盖 10 条英文样本、2 条非财经、1 条 Prompt Injection、失败 retry/failed 和重复入队缓存。
-- Docker/5433/6379 已恢复，0003/0004 migration 成功；Worker 真实测试 `34 pass / 0 fail / 0 skip / 0 todo`，DB `4/4`、crawler `35/35`。Web 历史基线实测 `23 pass / 1 fail`（热点时间窗口 Seed 为空），原始输出已置于 BLOCKED 顶部，未改 Web/Seed/旧测试。
+- Docker/5433/6379 已恢复，0003/0004/0005 migration 成功；Worker 真实测试 `34 pass / 0 fail / 0 skip / 0 todo`，DB `4/4`、crawler `35/35`。Web 历史基线实测 `23 pass / 1 fail`（热点时间窗口 Seed 为空），原始输出已置于 BLOCKED 顶部，未改 Web/Seed/旧测试。
 - 为保持阶段07旧测试可清理 Article，`ai_tasks.article_id` 增加 `ON DELETE CASCADE`，新增并成功应用 `0004_ai_tasks_article_cascade.sql`；未改历史 migration、Web 或旧测试。
+- 完成审计发现并修正 schema/migration 漂移：`ai_tasks` 与 `ai_usage` 的 Article 外键均由 schema 声明并由 `0004/0005` migration 应用 `ON DELETE CASCADE`；DB 约束只读复核通过。清理唯一受控测试残留后 Worker 重跑 `34/34`。
 - 反向验证已完成：临时放开成功任务保护时目标测试 `actual 51 / expected 37`、退出码 1；立即还原后同命令 `1 pass / 0 fail / 0 skip / 0 todo`、退出码 0。
 - 根级 `pnpm lint -- --force`、`pnpm typecheck -- --force` 和获批沙箱外 `pnpm build -- --force` 均 `7/7 successful`、退出码 0；根级 `pnpm test -- --force` 的其他包通过，但 Web 为 `23 pass / 1 fail`，退出码 1，原始失败已记录于 BLOCKED.md。
-- 当前未完成：最终提交和提交后工作树复核；真实模型质量未验收。Web/全量 test 受既有 Seed 时间窗口失败影响，按任务书停止受影响工作。
+- 当前未完成：本轮 schema/migration 修正的本地提交和提交后工作树复核；真实模型质量未验收。Web/全量 test 受既有 Seed 时间窗口失败影响，按任务书停止受影响工作。
 
 ## 阶段07开工回执
 - 目标：把阶段06同步采集改成 BullMQ 驱动的 crawl→normalize 可靠流水线，保证重试、恢复、追踪和幂等。
