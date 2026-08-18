@@ -11,7 +11,7 @@
     "build": "tsc --noEmit",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "node -e \"console.log('[@financehot/ai] no tests yet')\""
+    "test": "node --experimental-strip-types src/provider.test.ts"
   },
   "dependencies": {
     "@financehot/shared": "workspace:*",

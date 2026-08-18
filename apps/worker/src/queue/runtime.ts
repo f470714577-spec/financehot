@@ -3,13 +3,15 @@ import Redis from 'ioredis';
 import { and, eq, or } from 'drizzle-orm';
 
 import { SafeFetcher } from '@financehot/crawler';
-import { type Db, crawl_tasks, sources } from '@financehot/db';
+import { createLLMProvider, loadLLMConfig, type LLMConfig, type LLMProvider } from '@financehot/ai';
+import { ai_tasks, type Db, crawl_tasks, sources } from '@financehot/db';
 import {
   IMPLEMENTED_JOB_NAMES,
   isImplementedJobName,
   jobNameSchema,
   parseJobPayload,
   type CrawlJobPayload,
+  type AiProcessJobPayload,
   type ImplementedJobName,
   type JobName,
   type JobPayload,
@@ -21,6 +23,7 @@ import { defaultJobOptions, getWorkerConfig } from '../config/worker-config';
 import { crawlJobId, normalizeJobId, scheduledSlot, unsupportedJobMessage } from './ids';
 import { dueSources, errorDetails, crawlSource, emptyMetrics, normalizeRawRows, type PipelineMetrics } from './pipeline';
 import { SourceLock } from './source-lock';
+import { aiErrorDetails, enqueueAiTask, processAiTask } from '../ai-pipeline';
 
 type WorkerDb = Db['db'];
 
@@ -37,6 +40,8 @@ export interface WorkerRuntimeOptions {
   drainTimeoutMs?: number;
   lockDurationMs?: number;
   stalledIntervalMs?: number;
+  llmConfig?: LLMConfig;
+  llmProvider?: LLMProvider;
 }
 
 interface RuntimeConfig {
@@ -102,6 +107,7 @@ function mergeMetrics(target: RuntimeMetrics, value: PipelineMetrics) {
   target.articlesInserted += value.articlesInserted;
   target.articlesDuplicate += value.articlesDuplicate;
   target.articleIds.push(...value.articleIds);
+  target.newArticleIds.push(...value.newArticleIds);
 }
 
 export class WorkerRuntime {
@@ -116,6 +122,8 @@ export class WorkerRuntime {
   private readonly metrics = new Map<string, RuntimeMetrics>();
   private readonly baseRedis: Redis;
   private readonly lock: SourceLock;
+  readonly llmConfig: LLMConfig;
+  readonly llmProvider: LLMProvider;
   private scheduler?: ReturnType<typeof setInterval>;
   private accepting = true;
   private started = false;
@@ -125,6 +133,8 @@ export class WorkerRuntime {
     this.db = options.db;
     this.fetcher = options.fetcher ?? new SafeFetcher({ minIntervalMs: 1_000 });
     this.now = options.now ?? (() => new Date());
+    this.llmConfig = options.llmConfig ?? loadLLMConfig();
+    this.llmProvider = options.llmProvider ?? createLLMProvider(this.llmConfig);
     this.baseRedis = new Redis(options.redisUrl ?? process.env.REDIS_URL ?? 'redis://localhost:6379', {
       maxRetriesPerRequest: null,
     });
@@ -244,11 +254,31 @@ export class WorkerRuntime {
         }
         return result;
       }
+      if (queueName === 'ai_process') {
+        const result = await processAiTask({
+          db: this.db,
+          config: this.llmConfig,
+          provider: this.llmProvider,
+          now: this.now,
+          enqueue: async (nextPayload, nextJobId) => {
+            parseJobPayload('ai_process', nextPayload);
+            await this.queue('ai_process').add('ai_process', nextPayload, { ...jobOptions(this.config), jobId: nextJobId });
+          },
+        }, (payload as AiProcessJobPayload).aiTaskId, attemptNumber);
+        logger.info(`[job_id=${jobId}] [article_id=${result.articleId}] ai_process task_type=${result.taskType} status=${result.status}`);
+        return result;
+      }
       const normalizePayload = payload as NormalizeJobPayload;
       const result = await normalizeRawRows(this.db, await this.loadSource(normalizePayload.sourceId), normalizePayload.rawIds, this.now());
       if (metrics) mergeMetrics(metrics, result);
       for (const articleId of result.articleIds) {
         logger.info(`[job_id=${jobId} source_id=${sourceId} raw_id=${normalizePayload.rawIds.join(',')} article_id=${articleId}] normalize persisted`);
+      }
+      for (const articleId of result.newArticleIds) {
+        await enqueueAiTask(this.db, articleId, 'financial-filter', async (nextPayload, nextJobId) => {
+          parseJobPayload('ai_process', nextPayload);
+          await this.queue('ai_process').add('ai_process', nextPayload, { ...jobOptions(this.config), jobId: nextJobId });
+        }, this.llmConfig);
       }
       await this.markResult(normalizePayload.crawlTaskId, 'success', job.attemptsMade);
       await this.lock.release(sourceId, normalizePayload.crawlJobId);
@@ -256,6 +286,19 @@ export class WorkerRuntime {
       return result;
     } catch (error) {
       const details = errorDetails(error);
+      if (queueName === 'ai_process') {
+        const aiDetails = aiErrorDetails(error);
+        const canRetry = aiDetails.retryable && attemptNumber < this.config.attempts;
+        await this.db.update(ai_tasks).set({
+          status: canRetry ? 'retrying' : 'failed',
+          retry_count: attemptNumber,
+          error: aiDetails.message,
+          updated_at: this.now(),
+        }).where(eq(ai_tasks.id, (payload as { aiTaskId: string }).aiTaskId));
+        logger.error(`[job_id=${jobId}] ai_process ${canRetry ? 'retrying' : 'failed'} retry_count=${attemptNumber}`, aiDetails.message);
+        if (!canRetry && !aiDetails.retryable) throw new UnrecoverableError(aiDetails.message);
+        throw error;
+      }
       const canRetry = details.retryable && attemptNumber < this.config.attempts;
       if (taskId) await this.markResult(taskId, canRetry ? 'retrying' : 'failed', attemptNumber, details.message);
       if (!canRetry) await this.lock.release(sourceId, queueName === 'normalize' ? (payload as NormalizeJobPayload).crawlJobId : jobId);
@@ -360,6 +403,16 @@ export class WorkerRuntime {
     const parsedName = jobNameSchema.parse(name);
     if (!isImplementedJobName(parsedName)) throw new Error(unsupportedJobMessage(parsedName));
     const parsedPayload = parseJobPayload(parsedName, payload);
+    if (parsedName === 'ai_process') {
+      const aiPayload = parsedPayload as AiProcessJobPayload;
+      const task = await this.db.select({ id: ai_tasks.id, articleId: ai_tasks.article_id })
+        .from(ai_tasks)
+        .where(eq(ai_tasks.id, aiPayload.aiTaskId))
+        .limit(1);
+      if (!task[0] || task[0].articleId !== aiPayload.articleId) {
+        throw new Error(`ai_process task 不存在或 article_id 不匹配: ${aiPayload.aiTaskId}`);
+      }
+    }
     const jobId = options.jobId ?? `${parsedName}-${Date.now()}`;
     return this.queue(parsedName).add(parsedName, parsedPayload, { ...jobOptions(this.config), jobId });
   }

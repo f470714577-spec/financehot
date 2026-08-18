@@ -1,6 +1,6 @@
 # FinanceHot 新机器接手说明（Onboarding）
 
-> 状态：当前有效 · 最近核对：2026-08-17
+> 状态：当前有效 · 最近核对：2026-08-18
 > 目标：让另一台机器上的开发者 / Agent 快速拉起环境并接上开发进度
 
 ## 1. 项目与仓库
@@ -42,7 +42,7 @@ pnpm test        # 数据库包需要已迁移并完成 Seed 的 PostgreSQL
 pnpm build
 ```
 
-2026-08-18 最近复验：crawler 测试 35/35、worker 测试 33/33、数据库测试 4/4、Web 测试 24/24 均通过，0 fail/skip/todo；阶段07真实 Redis+PostgreSQL crawl→normalize、重试、失败集和 active→stalled 接管证据见 [`docs/acceptance/phase-07.md`](./acceptance/phase-07.md)。
+2026-08-18 最近复验：阶段07历史基线为 crawler 35、worker 33、数据库 4、Web 24；阶段08 AI Provider 测试 7/7 已全绿。真实 Redis/PostgreSQL 十条样本与全量门禁受 Docker named pipe 阻塞，原始证据见 [`BLOCKED.md`](../BLOCKED.md) 和 [`docs/acceptance/phase-08.md`](./acceptance/phase-08.md)。
 
 ## 5. 启动
 
@@ -59,6 +59,8 @@ pnpm --filter @financehot/worker install-sources
 pnpm --filter @financehot/worker start
 # 诊断入口：入队到 BullMQ，并等待本轮排空
 pnpm --filter @financehot/worker crawl-once
+
+阶段08若没有真实模型密钥，保持 `.env` 中 `LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL` 为空；Worker 会启动并输出 `status=unconfigured`，不会调用外部模型。验收使用的本地受控 HTTP Provider 只验证 OpenAI-compatible 协议、队列、数据库、Schema 和缓存，不代表真实模型质量。
 ```
 
 > `docker compose up -d`（不带服务名）会连同 web/worker 一起按 Dockerfile 构建启动；纯本地开发用上面分步方式即可。

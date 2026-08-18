@@ -25,8 +25,9 @@ async function main() {
   logger.info(`NODE_ENV=${env.NODE_ENV ?? 'development'}`);
   logger.info(`REDIS_URL=${env.REDIS_URL ? 'configured' : 'default localhost'}`);
   logger.info(`DATABASE_URL=${env.DATABASE_URL ? 'configured' : 'default localhost'}`);
+  logger.info(`LLM_PROVIDER=${runtime.llmConfig.provider ?? 'unconfigured'} model=${runtime.llmConfig.model ?? 'unconfigured'} status=${runtime.llmProvider.name === 'unconfigured' ? 'unconfigured' : 'configured'}`);
   await runtime.start();
-  logger.info(`Worker queues started: crawl, normalize; concurrency=${runtime.config.concurrency}`);
+  logger.info(`Worker queues started: crawl, normalize, ai_process; concurrency=${runtime.config.concurrency}`);
 }
 
 main().catch((err) => {

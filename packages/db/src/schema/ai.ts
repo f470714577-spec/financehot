@@ -1,11 +1,13 @@
 import {
   index,
   integer,
+  jsonb,
   pgTable,
   real,
   text,
   timestamp,
   uuid,
+  unique,
 } from 'drizzle-orm/pg-core';
 import { articles } from './articles';
 import { events } from './events';
@@ -23,6 +25,8 @@ export const ai_tasks = pgTable(
     model: text('model'),
     provider: text('provider'),
     input_hash: text('input_hash'),
+    cache_key: text('cache_key'),
+    result_json: jsonb('result_json').$type<Record<string, unknown> | null>(),
     error: text('error'),
     retry_count: integer('retry_count').notNull().default(0),
     ...timestamps(),
@@ -31,6 +35,7 @@ export const ai_tasks = pgTable(
     index('ai_tasks_status_idx').on(t.status),
     index('ai_tasks_article_id_idx').on(t.article_id),
     index('ai_tasks_task_type_idx').on(t.task_type),
+    unique('ai_tasks_cache_key_unique').on(t.cache_key),
   ],
 );
 
@@ -45,6 +50,7 @@ export const ai_usage = pgTable(
     model: text('model'),
     task_type: text('task_type'),
     article_id: uuid('article_id').references(() => articles.id),
+    attempt: integer('attempt').notNull().default(1),
     prompt_tokens: integer('prompt_tokens').notNull().default(0),
     completion_tokens: integer('completion_tokens').notNull().default(0),
     estimated_cost: real('estimated_cost'),
@@ -55,5 +61,6 @@ export const ai_usage = pgTable(
     index('ai_usage_article_id_idx').on(t.article_id),
     index('ai_usage_task_type_idx').on(t.task_type),
     index('ai_usage_created_at_idx').on(t.created_at),
+    unique('ai_usage_task_attempt_unique').on(t.ai_task_id, t.attempt),
   ],
 );

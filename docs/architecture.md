@@ -61,7 +61,7 @@ financehot/
 ├── packages/
 │   ├── shared/         # 基础公共层：类型、常量、工具、zod DTO、错误类型
 │   ├── db/             # Drizzle schema、client、migration、seed（仅依赖 shared）
-│   ├── ai/             # LLMProvider 抽象；实现与 Prompt 在阶段 08 补齐（仅依赖 shared）
+│   ├── ai/             # 可替换 LLMProvider、五步 Prompt、Structured Output 与 usage（仅依赖 shared）
 │   ├── crawler/        # SourceAdapter 骨架；采集与 SSRF 防护在阶段 06 补齐（仅依赖 shared）
 │   └── ui/             # Design Tokens、基础组件（依赖 shared）
 ├── scripts/  docker/  docs/
@@ -205,13 +205,13 @@ sources 1 ── N raw_articles 0..1 ── 1 articles N ── N sources
 
 **ai_tasks**（细粒度 AI 任务状态）
 
-- 主键 `id`；字段：task_type(financial-filter/translate/summarize/classify/entity-extraction/finance-score/market-impact/event-cluster/daily-report), article_id(FK 可空), event_id(FK 可空), status(pending/running/success/failed/retrying), prompt_version, model, provider, input_hash, error, retry_count, created_at, updated_at
+- 主键 `id`；阶段 08 增加 `cache_key`、`result_json`；缓存键包含 article、task_type、input_hash、prompt_version、provider、model，并设置唯一约束。字段：task_type(financial-filter/translate/summarize/classify/entity-extraction/finance-score/market-impact/event-cluster/daily-report), article_id(FK 可空), event_id(FK 可空), status(pending/running/success/failed/retrying), prompt_version, model, provider, input_hash, error, retry_count, created_at, updated_at
 - 索引：status、article_id、task_type
 - **不承担 Pipeline 粗粒度状态**——粗粒度由 `articles.processing_status` 表达
 
 **ai_usage**（每次 AI 调用成本）
 
-- 主键 `id`；字段：**ai_task_id(FK → ai_tasks.id)**, provider, model, task_type, article_id(FK 可空), prompt_tokens, completion_tokens, estimated_cost, created_at
+- 主键 `id`；增加 `attempt`，与 `ai_task_id` 组成唯一约束；字段：**ai_task_id(FK → ai_tasks.id)**, provider, model, task_type, article_id(FK 可空), attempt, prompt_tokens, completion_tokens, estimated_cost, created_at
 - 索引：ai_task_id、article_id、task_type、created_at
 - 用途：统一 Article/Event/Daily Report 等 AI 成本归因，追溯到具体 ai_task
 
@@ -268,9 +268,11 @@ POST   /api/admin/events/:id/split
 
 ### 6.1 Queue（BullMQ）
 
-队列契约固定为 `crawl / normalize / ai_process / embedding / cluster / score / daily_report`。阶段 07 已真实接入 `crawl`、`normalize` 两个 handler；其余名称只冻结版本化载荷契约，投递时明确拒绝，不启动消费者、不做成功占位。
+队列契约固定为 `crawl / normalize / ai_process / embedding / cluster / score / daily_report`。阶段 08 已真实接入 `ai_process` handler；当前 Worker 只启动 `crawl`、`normalize`、`ai_process`，其余名称只冻结版本化载荷契约，投递时明确拒绝，不启动消费者、不做成功占位。
 
 阶段 07 的实际链路是：Worker 启动后按 `sources.crawl_interval` 计算到期 slot，把 source 投递到 `crawl`；`crawl` 使用 SafeFetcher/SourceAdapter，先以 `pending` 保存 Raw，再投递 `normalize`；`normalize` 复用三键去重并更新 Raw/Article。`crawl-once` 只负责入队并等待队列排空，不保留同步业务旁路。
+
+阶段 08 在 `normalize` 创建新 Article 后，以确定性缓存键创建 `financial-filter`，成功后按 `translate → summarize → classify → entity-extraction` 顺序继续投递。非财经 Article 保留原文、设为 `filtered_out` 并隐藏；成功任务不会再次调用 Provider，Provider/模型/Prompt 版本、结构化结果和 usage 均可追踪。
 
 运行配置集中在 `apps/worker/src/config/worker-config.ts`：默认队列前缀 `financehot:stage07`、并发 `2`、attempts `3`、指数退避初始 `1000ms`、完成/失败各保留 `100` 条；可由 `.env` 的 `FINANCEHOT_*` 覆盖。每个 source 使用确定性 job ID 和 Redis 分布式锁，数据库唯一约束是最终防线。
 
@@ -316,6 +318,7 @@ PUBLISHED
 
 - `articles.processing_status`：**粗粒度** Pipeline 状态（上表）。
 - `ai_tasks.status` / `crawl_tasks.status`：**细粒度**任务状态（pending/running/success/failed/retrying + retry_count + error）。
+- 阶段 08 的 `ai_process` 只执行过滤、翻译、摘要、分类、实体抽取；非财经 Article 设为 `filtered_out` 并 `is_hidden=true`，原始字段不覆盖；阶段 09 才处理 Embedding/聚类。
 - **不**让单个 processing_status 承载所有重试与错误信息。
 
 ### 6.3 失败与重试语义（BullMQ）

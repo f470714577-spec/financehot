@@ -93,6 +93,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@financehot/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@financehot/crawler':
         specifier: workspace:*
         version: link:../../packages/crawler
@@ -111,6 +114,9 @@ importers:
       ioredis:
         specifier: ^5.4.1
         version: 5.11.1(supports-color@7.2.0)
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.10.2

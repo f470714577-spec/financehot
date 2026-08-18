@@ -1,5 +1,19 @@
 # PROGRESS
 
+## 阶段08开工回执（2026-08-18）
+- 目标：把阶段07产出的英文 Article 接入可替换、可追踪、可缓存的 AI 流水线，产出可浏览的中文标题、摘要、分类和为什么重要。
+- 顺序：Provider/Schema/Prompt → ai_tasks 与 usage → 仅 ai_process 队列流水线 → 真实 Redis/PostgreSQL 端到端 → 反向验证、全量门禁、文档、本地提交。
+- 最大风险：Docker named pipe 当前不存在，真实 PostgreSQL/Redis 与全量基线未恢复；详见 BLOCKED.md 顶部原始输出。
+- 已创建本地分支：`codex/stage-08-ai-pipeline`；未 push、未部署、未清库、未写入真实密钥。
+- 已核对 Node `v26.3.1`、pnpm `11.21.0`、Compose 服务 `postgres/redis/web/worker`。
+- 当前全量测试受沙箱 `spawn EPERM` 与服务不可用阻塞；未将该环境失败当作业务绿基线。
+- Provider、五步 Prompt、独立 Zod Schema、错误分类/有限重试/usage 测试已完成；AI Provider 测试实测 `7 pass / 0 fail / 0 skip / 0 todo`。
+- `ai_tasks` 已增加确定性 `cache_key`、结构化 `result_json` 和唯一约束；`ai_usage` 已增加 `attempt` 唯一约束与未知成本留空。
+- Worker 已启用 `ai_process`：新 Article 创建 financial-filter，成功后依次入队 translate、summarize、classify、entity-extraction；非财经保留并隐藏。
+- Worker 的 AI 任务抢占已用 `UPDATE ... WHERE status IN (pending,retrying)` 的返回行区分真正获得执行权者，竞争执行者不调用模型；成功结果仍以 cache_key 与 task 状态短路。
+- 已新增本地受控 HTTP Provider 的真实 Redis/PostgreSQL 集成测试，覆盖 10 条英文样本、2 条非财经、1 条 Prompt Injection、失败 retry/failed 和重复入队缓存。
+- 当前未完成：Docker/5433/6379 恢复后的 migration、集成测试、反向红→绿和全量 lint/typecheck/test/build；Docker Desktop 服务/可执行文件不存在，Corepack 也不存在；真实模型质量未验收。
+
 ## 阶段07开工回执
 - 目标：把阶段06同步采集改成 BullMQ 驱动的 crawl→normalize 可靠流水线，保证重试、恢复、追踪和幂等。
 - 顺序：基线/分支 → shared 契约 → worker 队列链与生命周期 → 真实 Redis+PostgreSQL 测试 → 文档、反向验证、全量门禁、提交。

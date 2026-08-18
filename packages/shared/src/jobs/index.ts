@@ -91,7 +91,7 @@ export type JobPayload =
   | ScoreJobPayload
   | DailyReportJobPayload;
 
-export const IMPLEMENTED_JOB_NAMES = ['crawl', 'normalize'] as const satisfies readonly JobName[];
+export const IMPLEMENTED_JOB_NAMES = ['crawl', 'normalize', 'ai_process'] as const satisfies readonly JobName[];
 export type ImplementedJobName = (typeof IMPLEMENTED_JOB_NAMES)[number];
 
 export function parseJobPayload(name: JobName | string, payload: unknown): JobPayload {

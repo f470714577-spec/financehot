@@ -2,11 +2,11 @@
 
 > FinanceHot 项目当前状态的短期事实源。每次阶段完成后更新，防止长对话或新会话产生架构漂移。
 > 权威基线仍是《FinanceHot DeepSeek 开发总控包 V1》+ `docs/architecture.md` + ADR。
-> 最近复验：2026-08-18；阶段 05、阶段 06 和阶段 07 已完成本地真实验收；未推送、未部署、未上线。
+> 最近复验：2026-08-18；阶段 05、阶段 06 和阶段 07 已完成本地真实验收；阶段 08 正在验收；未推送、未部署、未上线。
 
 ## 当前阶段
 
-阶段 07 —— BullMQ `crawl`→`normalize` 可靠后台流水线（本地 Redis+PostgreSQL 验收通过）
+阶段 08 —— Article AI 过滤、翻译、摘要、分类与实体抽取流水线（代码与 Provider 测试已完成，真实服务验收待恢复）
 
 ## 项目目标
 
@@ -21,7 +21,7 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 
 - `shared`：唯一基础层（类型/常量/工具/zod DTO/错误）。
 - `db`：Drizzle schema、client、migration（仅依赖 shared）。
-- `ai`：LLMProvider/EmbeddingProvider 接口 + Structured Output（仅依赖 shared）。
+- `ai`：可替换 OpenAI-compatible LLMProvider、错误分类、有限重试、usage 与独立 Zod Structured Output（仅依赖 shared）。
 - `crawler`：SourceAdapter 接口 + RSS/API/Web 实现（仅依赖 shared）。
 - `ui`：Design Token + 基础组件（依赖 shared）。
 - `apps/web`：前台 + 后台 + API，可短事务 CRUD 与入队（组合 ui+db+shared）。
@@ -32,6 +32,8 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 
 - `apps/web` 可执行短事务 CRUD 与任务入队，**禁止在 HTTP 请求内执行 Crawler、LLM、Embedding、Event Cluster 等耗时流水线**。
 - `apps/worker` 负责持久化与工作流编排，crawler/ai 只产出 DTO，不写库。
+- 阶段 08 仅启用 `crawl`、`normalize`、`ai_process`；Embedding、聚类、Finance Score、市场判断、后台和前端重构均未实现。
+- LLM 配置由 `LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_MODEL`、`LLM_API_KEY` 控制；四项缺失时 Worker 仍启动并明确输出 `status=unconfigured`，不发模型请求。
 
 ## Article/Event 核心原则
 
@@ -119,16 +121,21 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - `sources.adapter_config` 由 `0002_fast_mattie_franklin.sql` 单向 migration 增加；15 个 Demo `.example` 源被禁用。`apps/worker` 的同步 `crawl-once` 先写 `raw_articles` 再写 `articles`，按 canonical URL/content_hash/title_hash 幂等，并记录 crawl task 成败/重试。
 - 当前来源清单 8 行：6 个启用官方 RSS、2 个低频 Web 候选 disabled；BIS `/doclist/` 因 robots 禁止而淘汰，当前不再请求，早期探测结果不纳入合规验收。真实 run-once 已有 success task 与 Raw/Article 输入；详细数字、来源条款和测试命令见 `docs/acceptance/phase-06.md`。
 
-## 下一阶段
+## 阶段 08 当前结果
 
-阶段 08 —— LLM Provider 实现与 AI 处理（未实现）
+- OpenAI-compatible HTTP Provider 已实现：环境配置、unconfigured、401/429/5xx/超时/网络错误分类，有限重试，纯 JSON `JSON.parse` + Zod 校验，usage 与可选成本估算。
+- 五步 Prompt 已在 `prompts/index.ts` 版本化；正文使用数据边界，Prompt Injection 只作为文章内容处理。
+- Worker 已在现有 `crawl → normalize` 后为新 Article 创建确定性 `financial-filter` 任务，并按过滤→翻译→摘要→分类→实体抽取顺序执行；非财经 Article 保留、隐藏、设为 `filtered_out`。
+- 真实 Redis/PostgreSQL 十条样本、失败 retry/failed、重复入队缓存命中、migration 与全量门禁尚未完成；当前环境阻塞原始证据见 `BLOCKED.md` 顶部。
+- 当前没有真实模型密钥；即使本地受控 HTTP Provider 验收通过，也必须明确记录“真实模型质量未验收”。
 
 ## 架构待办
 
 - 阶段 05：新闻查询 API、筛选、搜索与分页；已完成本地正式验收。
 - 阶段 06：crawler 安全 Adapter、来源表驱动同步 crawl-once、Raw/Article 幂等（已完成本地验收）。
 - 阶段 07：BullMQ `crawl`/`normalize` Queue + Worker 状态机（已完成本地验收；详见 `docs/acceptance/phase-07.md`）。
-- 阶段 08：LLM Provider 实现 + Structured Output + 翻译/摘要/分类/过滤。
+- 阶段 08：LLM Provider 实现 + Structured Output + 翻译/摘要/分类/过滤（进行中，详见 `docs/acceptance/phase-08.md`）。
+- 阶段 09：Embedding、事件聚类与关联（未开始）。
 - 阶段 16：多阶段生产 Dockerfile + 部署。
 
 ## 禁止事项

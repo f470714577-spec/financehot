@@ -20,6 +20,7 @@ export interface PipelineMetrics {
   articlesInserted: number;
   articlesDuplicate: number;
   articleIds: string[];
+  newArticleIds: string[];
 }
 
 export function emptyMetrics(): PipelineMetrics {
@@ -31,6 +32,7 @@ export function emptyMetrics(): PipelineMetrics {
     articlesInserted: 0,
     articlesDuplicate: 0,
     articleIds: [],
+    newArticleIds: [],
   };
 }
 
@@ -227,6 +229,7 @@ export async function normalizeRawRows(
       }
       metrics.articlesInserted += 1;
       metrics.articleIds.push(articleId);
+      metrics.newArticleIds.push(articleId);
       await tx
         .update(raw_articles)
         .set({ processing_status: 'normalized', article_id: articleId, updated_at: now })

@@ -14,12 +14,14 @@
     "ping:redis": "tsx src/ping-redis.ts"
   },
   "dependencies": {
+    "@financehot/ai": "workspace:*",
     "@financehot/crawler": "workspace:*",
     "@financehot/db": "workspace:*",
     "@financehot/shared": "workspace:*",
     "bullmq": "^5.81.3",
     "drizzle-orm": "^0.38.2",
-    "ioredis": "^5.4.1"
+    "ioredis": "^5.4.1",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

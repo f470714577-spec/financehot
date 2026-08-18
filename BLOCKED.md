@@ -1,5 +1,66 @@
 # BLOCKED
 
+## 阶段08开工原始阻塞证据（2026-08-18）
+
+任务书要求的原始命令与输出如下；未执行 seed、清库或写入数据库：
+
+```text
+git status --short --branch
+## codex/stage-08-ai-pipeline
+node --version
+v26.3.1
+pnpm --version
+11.21.0
+docker compose config --services
+postgres
+redis
+web
+worker
+docker compose up -d postgres redis
+unable to get image 'redis:7-alpine': failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
+docker compose up -d postgres redis  # 获批沙箱外重试，原始结果相同
+unable to get image 'redis:7-alpine': failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
+$env:CI='true'; pnpm test -- --force
+Tasks: 3 successful, 7 total
+Failed: @financehot/crawler#test
+@financehot/crawler: Error: spawn EPERM
+@financehot/worker: Error: spawn EPERM
+@financehot/db: Error: spawn EPERM
+@financehot/web: Error: spawn EPERM
+@financehot/ai:test: [@financehot/ai] no tests yet
+@financehot/shared:test: [@financehot/shared] no tests yet
+@financehot/ui:test: [@financehot/ui] no tests yet
+EXIT_CODE=1
+```
+
+判断：Docker named pipe 不存在，真实 PostgreSQL/Redis 未恢复；Node `spawn EPERM` 是当前沙箱执行环境错误，不是业务失败。该阻塞只影响真实服务验收和当前全量基线，不阻止继续实现不依赖服务的 Provider、Schema、Prompt 和单元测试；恢复后必须用同一入口复跑，旧测试计数不得下降。
+
+## 阶段08依赖复核（2026-08-18 21:22 +08:00）
+
+继续执行真实服务前置检查，结果仍未恢复：
+
+```text
+docker compose ps
+failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
+Test-NetConnection localhost:5433
+False
+Test-NetConnection localhost:6379
+False
+Get-Service com.docker.service
+Status  Name               StartType
+Stopped com.docker.service Manual
+Start-Service com.docker.service
+Service 'Docker Desktop Service (com.docker.service)' cannot be started due to the following error: Cannot open 'com.docker.service' service on computer '.'
+Test-Path 'C:\Program Files\Docker\Docker\Docker Desktop.exe'
+False
+$env:CI='true'; pnpm --filter @financehot/db db:migrate
+Recreating F:\codex-project\financehot\node_modules
+corepack enable; corepack pnpm --version
+corepack: The term 'corepack' is not recognized as a name of a cmdlet, function, script file, or executable program.
+```
+
+迁移命令未到达数据库连接阶段；未执行 seed、清库或删除数据。Docker Desktop 可执行文件不存在且服务无法启动；Corepack 也未安装，但现有 pnpm 仍为任务书要求的 `11.21.0`。因此真实 Redis/PostgreSQL、迁移、Worker 集成、反向红→绿和全量 pnpm 门禁暂不能宣称完成；代码侧不受影响的检查继续执行。
+
 ## 阶段07当前阻塞（2026-08-18）
 
 无。本轮 Docker Desktop 初始未运行，启动后 PostgreSQL/Redis 恢复可用；耗尽失败状态一致性和真实 active→stalled 接管缺口均已修复。全仓首轮因 Seed 热点数据跨出 24 小时窗口失败，未获授权清库；验收时只临时调整 1 条已记录的 Seed event 时间并在测试后恢复原值。Turbo 中断遗留的测试 fixture 已按 `stage06-test-*`/`stage07-it-*` 精确清理，阶段06测试已改用唯一 queue prefix，未删除默认 Stage 07 Redis 空间。真实 Redis+PostgreSQL 测试与全量门禁已完成。以下保留原始环境输出和历史阻塞记录，便于接手时区分已解除问题与当前阻塞。
