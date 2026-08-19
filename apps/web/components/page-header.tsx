@@ -31,7 +31,7 @@ export function DemoNotice() {
       <span>
         <strong>Seed 数据版本：</strong>当前页面已从 PostgreSQL 读取数据库中明确标记的模拟财经内容，尚未接入实时采集。
       </span>
-      <span className="shrink-0 font-data text-[10px] text-ink-muted">阶段 05 · PostgreSQL API</span>
+      <span className="shrink-0 font-data text-[10px] text-ink-muted">阶段 10 · Event Cluster</span>
     </div>
   );
 }

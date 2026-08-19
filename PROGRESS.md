@@ -1,5 +1,33 @@
 # PROGRESS
 
+## 阶段10交叉竞态返工开工回执（2026-08-19）
+- 目标：让边界 LLM 返回后在共享事件变更锁内重新解析候选成员归属，避免 cluster 与 merge/split 交叉造成外键失败、错连或孤儿 Event。
+- 基线核对：分支 `codex/stage-10-event-cluster`、HEAD `64b3396`、工作树干净；`git diff --check f5e9d33..HEAD` 退出 1，原始 3 处尾随空格待收口。
+- 顺序：新增确定性真实 PostgreSQL 竞态红测 → 共享锁/事务内重解析 → 反向红绿与 Worker 全量 → 页面标签/截图/文档 → 最多3轮根级门禁和单一本地 fix 提交。
+- 最大风险：LLM 期间不持锁与最终重解析的事务边界、旧 Event 删除后的幂等任务状态，以及截图验收环境再次出现浏览器子进程权限错误。
+
+## 阶段10交叉竞态返工任务1完成（2026-08-19）
+- 在 `event-stage10.integration.test.ts` 新增真实 PostgreSQL 确定性测试：Promise 门控 LLM，等待期间执行 `mergeEvents(source→target)` 并确认 source 删除，释放后验证 cluster、关系、计数、唯一 primary、任务成功、无孤儿和重放幂等。
+- 旧实现沙箱外红测：Worker `tests 46 / pass 45 / fail 1 / skipped 0 / todo 0`，新增测试因复用已删除 source Event 稳定报 PostgreSQL FK `23503`；原始摘要与环境失败见 `BLOCKED.md`。
+
+## 阶段10交叉竞态返工任务2完成（2026-08-19）
+- `cluster-pipeline.ts` 删除私有 `90209`，候选查询与最终写入统一使用 `EVENT_MUTATION_LOCK_KEY`；LLM HTTP 调用保持事务/锁外。
+- 最终共享锁事务按原 `candidate.memberIds` 查询当前 `event_articles`：全部成员仍归属唯一 Event 才重定向 merge，否则保守新建；LLM separate/无决定保持新建，不增加第二次调用。
+- 修复后阶段10测试文件 `4/4`；反向直写旧 `candidate.eventId` 时 `3 pass / 1 fail` 且为同一 FK 红测，立即还原后 `4/4`，临时代码未保留。
+
+## 阶段10交叉竞态返工任务3完成（2026-08-19）
+- 清理 `event-corrections.ts` 1 处与 `phase-10.md` 2 处尾随空格；DemoNotice 改为“阶段 10 · Event Cluster”，保留 Seed、非实时说明。
+- 浏览器技能初始化原始错误为 `Importing module "node:process" is not allowed in node_repl`；按既有替代路径使用本机 Edge/Playwright 覆盖四张白名单截图。
+- 四页实际结果：HTTP `200`；`innerWidth === scrollWidth === bodyScrollWidth` 分别为 `1440/1440/1440`、`390/390/390`；overflow `false`；console error/warning、pageerror、request failure 全部 `0`；页面含阶段10标签且不含阶段05旧标签。
+- 四张截图已覆盖并保存为实际 `1440×900`、`390×844` 尺寸；Worker 全量为 `46/46`，Web 既有门禁为 `24/24`。
+- 当前顺序：代码/页面验收、根级门禁、diff/白名单核对和唯一的本地 fix 提交均已完成；不 push、不 deploy。
+
+## 阶段10交叉竞态返工根级门禁第1轮（2026-08-19）
+- 按 `lint → build → typecheck → test` 顺序执行；`lint`、修复后重跑的 `build`、`typecheck`、`test` 均为 Turbo `7 successful / 7 total`、退出码 0。
+- 首次 `build` 仅暴露 `readonly string[]` 传入 `inArray` 的 TypeScript 类型错误，已用普通数组副本做最小修复并立即重跑；未改变业务判断、阈值或契约。
+- 根级关键包统计：AI `17/17`、Web `24/24`、crawler `35/35`、DB `4/4`、Worker `46/46`；fail/skip/todo 均为 0。
+- 本轮根级门禁不再重复第2/3轮；最终 `git diff --check f5e9d33..HEAD` 退出 0，提交文件 `11` 个且 `whitelist_outside=0`，唯一本地 `fix` 提交已创建；不 push、不 deploy。
+
 ## 阶段10开工回执（2026-08-19）
 - 目标：把阶段09保守聚类补成可解释、可纠错、可展示的多信源 Event，并闭环首页/详情。
 - 基线：分支 `codex/stage-09-embedding-cluster`、HEAD `f5e9d33`、工作树干净；获批沙箱外 Worker `42/42`、Web `24/24`。

@@ -1,5 +1,86 @@
 # BLOCKED
 
+## 阶段10交叉竞态返工：任务书原样命令环境输出（2026-08-19）
+
+按任务书原样执行 `$env='true'; pnpm --filter @financehot/worker test` 未进入测试，pnpm 因非交互环境尝试重装 modules 后退出：
+
+```text
+Scope: all 8 workspace projects
+[ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+Command failed with exit code 1: pnpm install
+```
+
+该输出是 pnpm 环境前置失败，不是业务断言；随后按项目既有 `CI=true` 入口复跑，继续取得旧实现的真实竞态红测。
+
+旧实现的沙箱外真实竞态红测：
+
+```text
+✖ 阶段10边界 LLM 与人工 merge 交叉时按存活 Event 归属并安全重放
+ℹ tests 46
+ℹ pass 45
+ℹ fail 1
+ℹ skipped 0
+ℹ todo 0
+error: insert or update on table "event_articles" violates foreign key constraint "event_articles_event_id_events_id_fk"
+code: 23503
+detail: Key (event_id)=(2036c2a2-bf84-4a68-8527-efc1e26d3b07) is not present in table "events".
+at persistCluster (.../apps/worker/src/cluster-pipeline.ts:379:3)
+at processClusterTask (.../apps/worker/src/cluster-pipeline.ts:429:18)
+exit 1
+```
+
+该红测由新增测试的 Promise 门控和真实 PostgreSQL 事务产生，无随机 sleep；旧实现临时未改动，外键失败已稳定复现。
+
+本轮默认沙箱的原始 Node 权限输出：
+
+```text
+$env:CI='true'; pnpm --filter @financehot/worker test
+tests 5 / pass 0 / fail 5 / skipped 0 / todo 0
+Error: spawn EPERM
+errno: -4048, code: 'EPERM', syscall: 'spawn'
+exit 1
+```
+
+按规则获批沙箱外复跑后取得上面的真实业务红测；修复后 targeted 阶段10测试与反向验证均在沙箱外完成。当前未解决阻塞：无。
+
+反向验证原始摘要：
+
+```text
+临时直接使用 candidate.eventId：tests 4 / pass 3 / fail 1 / skipped 0 / todo 0
+error: insert or update on table "event_articles" violates foreign key constraint "event_articles_event_id_events_id_fk"
+code: 23503
+
+还原归属重解析：tests 4 / pass 4 / fail 0 / skipped 0 / todo 0 / exit 0
+```
+
+根级第1轮门禁的首次 `build` 原始业务无关类型错误：
+
+```text
+src/cluster-pipeline.ts(284,33): TS2769
+readonly string[] is not assignable to the expected mutable array type
+exit 2
+```
+
+已将查询参数复制为普通数组，未改变业务逻辑；随后 `build` 重跑为 `Tasks: 7 successful, 7 total / exit 0`。同轮 `lint`、`typecheck`、`test` 最终均为 `Tasks: 7 successful, 7 total / exit 0`；root test 的 Worker 为 `46/46`，AI/Web/crawler/DB 分别为 `17/17`、`24/24`、`35/35`、`4/4`，fail/skip/todo 均为 `0`。当前未解决阻塞：无。
+
+浏览器技能初始化原始错误：
+
+```text
+Importing module "node:process" is not allowed in node_repl
+```
+
+默认沙箱启动 Web 开发服务器的原始输出：
+
+```text
+$env:CI='true'; pnpm --filter @financehot/web dev
+Error: spawn EPERM
+errno: -4048, code: 'EPERM', syscall: 'spawn'
+exit 1
+```
+
+该工具错误未改变代码；使用本机 Edge/Playwright 替代路径完成同等四视口验收并覆盖截图，当前未解决阻塞：无。
+
 当前未解决阻塞：无。阶段10页面截图、横向溢出和控制台验收已于 2026-08-19 解除；下方保留历史阻塞与原始输出，便于审计和断线接手。
 
 ## 阶段10页面验收解除（2026-08-19）

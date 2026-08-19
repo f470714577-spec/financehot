@@ -134,7 +134,7 @@ export async function splitEvent(db: WorkerDb, input: SplitEventInput): Promise<
       confidence: row.confidence,
       cluster_method: row.cluster_method,
       created_at: row.created_at,
-    }))); 
+    })));
     await tx.delete(event_articles).where(and(eq(event_articles.event_id, input.eventId), inArray(event_articles.article_id, requested)));
     await recomputeEventFacts(tx, input.eventId, now);
     const newFacts = await recomputeEventFacts(tx, inserted.id, now);

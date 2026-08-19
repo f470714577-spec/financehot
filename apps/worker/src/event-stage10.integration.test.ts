@@ -8,6 +8,7 @@ import { after, before, test } from 'node:test';
 import {
   OpenAICompatibleProvider,
   type LLMConfig,
+  type LLMProvider,
 } from '@financehot/ai';
 import {
   ai_tasks,
@@ -321,6 +322,104 @@ test('阶段10边界只调用一次结构化 LLM，未配置时保守新建并�
     assert.equal(unconfiguredCalls, 0);
     eventIds.push(conservativeLink.event_id);
   } finally {
+    await cleanupFixture(articleIds, sourceIds, eventIds);
+  }
+});
+
+test('阶段10边界 LLM 与人工 merge 交叉时按存活 Event 归属并安全重放', async () => {
+  const articleIds: string[] = [];
+  const sourceIds: string[] = [];
+  const eventIds: string[] = [];
+  const now = new Date('2026-08-19T12:00:00.000Z');
+  const corporateId = await categoryId('corporate');
+  const llmConfig: LLMConfig = {
+    provider: 'stage10-controlled',
+    baseUrl: 'http://127.0.0.1:1/v1',
+    model: 'stage10-controlled-llm',
+    apiKey: 'local-controlled-key',
+    timeoutMs: 2_000,
+    maxRetries: 0,
+    retryDelayMs: 0,
+  };
+  let markStarted!: () => void;
+  let releaseLLM!: () => void;
+  const llmStarted = new Promise<void>((resolvePromise) => { markStarted = resolvePromise; });
+  const llmGate = new Promise<void>((resolvePromise) => { releaseLLM = resolvePromise; });
+  let llmCalls = 0;
+  const llmProvider = {
+    name: 'stage10-controlled',
+    model: 'stage10-controlled-llm',
+    generateJSONWithUsage: async () => {
+      llmCalls += 1;
+      markStarted();
+      await llmGate;
+      return {
+        value: { decision: 'merge', confidence: 0.91, reason: '候选 Event 在 LLM 期间发生人工归并。', title: 'Alpha Corp 财报（竞态核验）', summary: '候选 Event 归并后的同一份财报事实。' },
+        attempts: [],
+      };
+    },
+  } as unknown as LLMProvider;
+  try {
+    const sourceRows = await connection.db.insert(sources).values([
+      { name: `${prefix}-race-source-0`, type: 'rss' as const, country: 'US', language: 'zh', source_level: 'B' as const, enabled: false, homepage: 'https://stage10.example' },
+      { name: `${prefix}-race-source-1`, type: 'rss' as const, country: 'US', language: 'zh', source_level: 'A' as const, enabled: false, homepage: 'https://stage10.example' },
+      { name: `${prefix}-race-source-2`, type: 'rss' as const, country: 'US', language: 'zh', source_level: 'C' as const, enabled: false, homepage: 'https://stage10.example' },
+    ]).returning({ id: sources.id });
+    sourceIds.push(...sourceRows.map((row) => row.id));
+
+    const sourceArticle = await insertArticle(sourceRows[0]!.id, `${prefix} Alpha Corp 季度财报`, '候选 Event 的首篇财报报道。', '2026-08-19T08:00:00.000Z', articleIds);
+    const targetArticle = await insertArticle(sourceRows[1]!.id, `${prefix} Alpha Corp 财报核验`, '人工 merge 目标 Event 的已有报道。', '2026-08-19T09:00:00.000Z', articleIds);
+    const boundaryArticle = await insertArticle(sourceRows[2]!.id, `${prefix} Alpha Corp 季度财报边界报道`, '边界 LLM 等待期间候选 Event 会被人工 merge。', '2026-08-19T10:00:00.000Z', articleIds);
+    await connection.db.insert(article_categories).values([
+      { article_id: sourceArticle, category_id: corporateId, confidence: 0.95 },
+      { article_id: targetArticle, category_id: corporateId, confidence: 0.95 },
+      { article_id: boundaryArticle, category_id: corporateId, confidence: 0.95 },
+    ]);
+    const sourceEvent = (await connection.db.insert(events).values({ title: `${prefix} race source`, summary: 'candidate source', article_count: 1, source_count: 1, first_seen_at: new Date('2026-08-19T08:00:00.000Z'), last_seen_at: new Date('2026-08-19T08:00:00.000Z'), status: 'developing' }).returning({ id: events.id }))[0]!;
+    const targetEvent = (await connection.db.insert(events).values({ title: `${prefix} race target`, summary: 'merge target', article_count: 1, source_count: 1, first_seen_at: new Date('2026-08-19T09:00:00.000Z'), last_seen_at: new Date('2026-08-19T09:00:00.000Z'), status: 'developing' }).returning({ id: events.id }))[0]!;
+    eventIds.push(sourceEvent.id, targetEvent.id);
+    await connection.db.insert(event_articles).values([
+      { event_id: sourceEvent.id, article_id: sourceArticle, is_primary: true, similarity_score: 1, confidence: 1, cluster_method: 'embedding' as const },
+      { event_id: targetEvent.id, article_id: targetArticle, is_primary: true, similarity_score: 1, confidence: 1, cluster_method: 'embedding' as const },
+    ]);
+    await insertClusterTask(sourceArticle, [1, 0, 0]);
+    const clusterTaskId = await insertClusterTask(boundaryArticle, [0.9, 0.435889894, 0]);
+    const options = { ...clusterOptions(now), llmConfig, llmProvider };
+
+    const clusterPromise = processClusterTask(options, clusterTaskId, 1);
+    await llmStarted;
+    await mergeEvents(connection.db, { sourceEventId: sourceEvent.id, targetEventId: targetEvent.id, now });
+    assert.equal((await connection.db.select().from(events).where(eq(events.id, sourceEvent.id))).length, 0, 'LLM 等待期间人工 merge 必须删除 source Event');
+    releaseLLM();
+    const clustered = await clusterPromise;
+    assert.equal(clustered.status, 'processed');
+    assert.equal(clustered.eventId, targetEvent.id);
+    assert.equal(llmCalls, 1);
+
+    const links = await connection.db.select().from(event_articles).where(inArray(event_articles.article_id, [sourceArticle, targetArticle, boundaryArticle]));
+    assert.equal(links.length, 3, '三篇 Article 必须各有且只有一条 Event 关系');
+    assert.equal(new Set(links.map((row) => row.event_id)).size, 1);
+    assert.equal(links.every((row) => row.event_id === targetEvent.id), true);
+    assert.equal(links.filter((row) => row.is_primary).length, 1);
+    assert.equal(links.find((row) => row.is_primary)?.article_id, targetArticle, 'merge 后唯一 primary 必须按信源质量重算');
+    const target = (await connection.db.select().from(events).where(eq(events.id, targetEvent.id)).limit(1))[0]!;
+    assert.equal(target.article_count, 3);
+    assert.equal(target.source_count, 3);
+    assert.equal((await connection.db.select().from(events).where(inArray(events.id, eventIds))).length, 1, '不得留下旧 source 或其他孤儿 Event');
+
+    const taskRowsBeforeReplay = await connection.db.select().from(ai_tasks).where(eq(ai_tasks.article_id, boundaryArticle));
+    const linkCountBeforeReplay = links.length;
+    const replay = await processClusterTask(options, clusterTaskId, 2);
+    assert.equal(replay.status, 'cached');
+    assert.equal(llmCalls, 1, '重放不得新增 LLM 调用');
+    assert.equal((await connection.db.select().from(ai_tasks).where(eq(ai_tasks.article_id, boundaryArticle))).length, taskRowsBeforeReplay.length, '重放不得新增任务');
+    assert.equal((await connection.db.select().from(event_articles).where(inArray(event_articles.article_id, [sourceArticle, targetArticle, boundaryArticle]))).length, linkCountBeforeReplay, '重放不得新增关系');
+    const boundaryTask = (await connection.db.select().from(ai_tasks).where(eq(ai_tasks.id, clusterTaskId)).limit(1))[0]!;
+    assert.equal(boundaryTask.status, 'success');
+    assert.equal((boundaryTask.result_json as { eventId?: string } | null)?.eventId, targetEvent.id);
+    assert.equal((await connection.db.select().from(event_articles).where(eq(event_articles.event_id, sourceEvent.id))).length, 0);
+  } finally {
+    releaseLLM();
     await cleanupFixture(articleIds, sourceIds, eventIds);
   }
 });

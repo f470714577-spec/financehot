@@ -28,12 +28,11 @@ import { getPrompt, type PromptArticle } from '../../../prompts';
 
 import { clusterDefaults } from './config/worker-config';
 import { embeddingInputHash } from './embedding-pipeline';
-import { recomputeEventFacts, type WorkerDb, type WorkerTransaction } from './event-facts';
+import { EVENT_MUTATION_LOCK_KEY, recomputeEventFacts, type WorkerDb, type WorkerTransaction } from './event-facts';
 
 type WorkerQuery = WorkerDb | WorkerTransaction;
 
 const EVENT_CLUSTER_PROMPT = getPrompt('event-cluster');
-const CLUSTER_TRANSACTION_LOCK_KEY = 90209;
 const ACTION_MARKERS = [
   '收购', '并购', '回购', '裁员', '召回', '起诉', '诉讼', '任命', '辞任', '上调指引', '下调指引', '加息', '降息',
   '发行', '财报', '盈利', '融资', '上市', '停产', '制裁', '批准', '调查', '投资', '涨价', '降价', '签署', '谈判', '分红', '派息', '出售', '破产',
@@ -279,6 +278,15 @@ function eventClusterInput(article: typeof articles.$inferSelect, candidate: Can
   });
 }
 
+async function resolveCurrentCandidateEvent(tx: WorkerTransaction, memberIds: readonly string[]) {
+  if (!memberIds.length) return undefined;
+  const rows = await tx.select({ articleId: event_articles.article_id, eventId: event_articles.event_id })
+    .from(event_articles).where(inArray(event_articles.article_id, [...memberIds]));
+  if (rows.length !== memberIds.length || new Set(rows.map((row) => row.articleId)).size !== memberIds.length) return undefined;
+  const eventIds = new Set(rows.map((row) => row.eventId));
+  return eventIds.size === 1 ? [...eventIds][0] : undefined;
+}
+
 async function persistProviderAttempts(tx: WorkerTransaction, task: typeof ai_tasks.$inferSelect, attemptNumber: number, attempts: readonly ProviderAttempt[], config: LLMConfig) {
   if (!attempts.length) return;
   await tx.insert(ai_usage).values(attempts.map((attempt) => ({
@@ -408,7 +416,7 @@ export async function processClusterTask(options: ClusterPipelineOptions, taskId
     timeWindowHours: normalizeHours(options.timeWindowHours),
   };
   const firstPass = await options.db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${CLUSTER_TRANSACTION_LOCK_KEY})`);
+    await tx.execute(sql`select pg_advisory_xact_lock(${EVENT_MUTATION_LOCK_KEY})`);
     const candidate = await findCandidate(tx, article, embedding, candidateOptions);
     if (candidate?.kind === 'boundary') return { candidate };
     const decision: PersistDecision = { similarity: candidate?.similarity ?? 1, confidence: candidate?.similarity ?? 1, clusterMethod: 'embedding', eventId: candidate?.eventId };
@@ -427,8 +435,9 @@ export async function processClusterTask(options: ClusterPipelineOptions, taskId
     }
   }
   const result = await options.db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${CLUSTER_TRANSACTION_LOCK_KEY})`);
-    return persistCluster(tx, claim.task!, article, decision, now());
+    await tx.execute(sql`select pg_advisory_xact_lock(${EVENT_MUTATION_LOCK_KEY})`);
+    const currentEventId = decision.eventId ? await resolveCurrentCandidateEvent(tx, candidate.memberIds) : undefined;
+    return persistCluster(tx, claim.task!, article, { ...decision, eventId: currentEventId }, now());
   });
   return { status: result.cached ? 'cached' : 'processed', articleId: initial.article_id, taskId, eventId: result.eventId, similarity: result.similarity };
 }
