@@ -1,6 +1,19 @@
 # 阶段 08 验收记录
 
-> 状态：工程验收完成（本地稳定基线）。本文只记录实际执行过的命令和输出；真实模型质量验收已由领导移至供应商选定后的上线前验收。
+> 状态：功能已实现，根级测试入口已串行隔离跨包共享数据库 fixture，稳定门禁已恢复；真实模型质量验收已由领导移至供应商选定后的上线前验收。
+
+## 2026-08-19 知识收尾复核
+
+- 当前沙箱外 lint、typecheck、build 均 `7/7 successful`。
+- 根级 test 因 Web `before` 临时插入第 13 个 Event 时 DB 包并行断言 Seed Event 必须恰好为 12 而退出 1；同轮 Web `24/24`，根运行后隔离 DB `4/4`。
+- 以上是修复前原始红叉证据，根因是 workspace 测试并行共享同一 PostgreSQL 实例。
+
+## 2026-08-19 根级测试隔离收口
+
+- 根 `package.json` 的 `test` 固定为 `turbo run test --concurrency=1`，以 workspace 包串行化隔离共享数据库 fixture；未改 Seed、生产查询、数据库时钟或 migration。
+- 复跑前只读核对并精确清理 1 个中断遗留的 `stage08-it-*` source 与 10 条 `controlled.example` 文章；清理后及三次正式复跑后该前缀残留均为 0。
+- `$env:CI='true'; pnpm test -- --force --output-logs=errors-only` 连续 3 次均退出 0，每次 Turbo `7/7 successful`、0 cached；lint、typecheck、build 也均 `7/7 successful`、退出 0。
+- 阶段08根级稳定全绿门禁已恢复；阶段09未提前开发，真实模型质量仍待上线前验收。
 
 ## 范围与边界
 
@@ -9,14 +22,14 @@
 - Provider 是由 `LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_MODEL`、`LLM_API_KEY` 配置的 OpenAI-compatible HTTP 适配器。
 - 当前没有真实模型密钥；本地受控 HTTP Provider 不能证明真实模型质量，最终结论必须保留“真实模型质量未验收”。
 
-## 2026-08-19 当前收口结论
+## 2026-08-19 阶段工程验收结论（早于上述知识收尾复核）
 
 - Web 测试专属当前时间 Event 已插入并在 after 中按确定 ID 清理；Web `24/24`，清理后测试 Event 与关联关系均为 0。临时禁用 fixture 时同一热点断言红（`23 pass / 1 fail`），还原后绿（`24/24`）。
 - Provider 每次实际 HTTP attempt 均携带不含密钥、Authorization、Prompt 或响应正文的审计记录；`ai_usage` 增加 `provider_attempt`、`outcome`、`http_status`、`usage_reported`，新增向前 migration `0006`，唯一约束为 `(ai_task_id, attempt, provider_attempt)`。
 - AI `10/10`、Worker `39/39`，覆盖重试成功、非法 JSON、Schema 失败、timeout/500 耗尽、重复处理和双 Worker 竞争；失败或无 usage 时标记供应商未报告，成本保持 NULL。
 - 失败路径红→绿：临时跳过 Worker 的失败审计写入时 AI pipeline 集成测试为 `3 pass / 3 fail`，失败包含 `37 !== 39`、非法 JSON/Schema `0 !== 1` 和耗尽请求 `0 !== 3`；还原后同一入口 `6 pass / 0 fail / 0 skip / 0 todo`。
 - 根级 `$env:CI='true'; pnpm lint -- --force`、`typecheck`、`test`、`build` 均退出 0，Turbo 均 `7/7 successful`；全仓测试数量为 Web `24`、AI `10`、Worker `39`、crawler `35`、DB `4`，均 0 fail/skip/todo。
-- `apps/worker/package.json` 相对 `4d146a8` 仅有获批的 `@financehot/ai` 与 `zod` 必要声明；本阶段当前阻塞为“无”。未调用真实 Key，未宣称真实模型质量或成本。
+- `apps/worker/package.json` 相对 `4d146a8` 仅有获批的 `@financehot/ai` 与 `zod` 必要声明；当次工程验收的阻塞为“无”。未调用真实 Key，未宣称真实模型质量或成本。
 
 ## 历史静态与 Provider 证据（2026-08-18）
 

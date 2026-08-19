@@ -26,6 +26,6 @@ Next.js App Router、React、TypeScript strict、Tailwind CSS、PostgreSQL 16 + 
 
 ## 当前状态与下一步
 
-- 当前阶段：阶段 04 核心前台页面，Seed 数据版本已在本地实现并验证，仍待项目审核。
-- 下一阶段：阶段 05 新闻查询 API、筛选、搜索与分页；未经允许不提前开发后续阶段。
+- 当前阶段：阶段 08 Article AI 处理流水线已实现，根级测试已通过入口级串行化修复跨包共享数据库 fixture 竞争并恢复稳定门禁。项目仍未推送、未部署、未上线，真实模型质量待供应商选定后在上线前验收。
+- 下一阶段：阶段 09 Embedding、事件聚类与关联仍未开始；未经允许不提前开发后续阶段。
 - 现役进度以 `PROJECT_CONTEXT.md` 为准，架构机制以 `docs/architecture.md` 与 ADR 为准，使用和接手流程见 `README.md`、`docs/onboarding.md`。

@@ -1,5 +1,17 @@
 # PROGRESS
 
+## 阶段08根级测试隔离收口（2026-08-19）
+- 根因确认：workspace 测试默认由 Turbo 并行执行，`apps/web` 的当前时间 Event fixture 与 `packages/db` 的 Seed 精确计数共享同一 PostgreSQL 实例，产生 `events=13` 竞争失败。
+- 最小修复：根 `package.json` 的 `test` 脚本固定为 `turbo run test --concurrency=1`，以 workspace 包串行化隔离共享数据库测试；未改 Seed、生产查询、数据库时钟或 migration。
+- 红→绿证据：未改脚本的串行等价入口先消除 `events=13`，仅因此前中断遗留的 1 个 `stage08-it-*` source/10 条 `controlled.example` 文章在 Worker 唯一约束处失败；只读核对后按精确前缀事务清理，残留均为 0。
+- 正式 `$env:CI='true'; pnpm test -- --force --output-logs=errors-only` 连续 3 次均退出 0，每次 Turbo `7/7 successful`、0 cached。
+- 同轮静态门禁：`lint`、`typecheck`、`build` 均 `7/7 successful`、退出 0；当前根级稳定全绿门禁已恢复，阶段09仍未开始。
+
+## 阶段08知识收尾复核（修复前，2026-08-19）
+- `neat-freak` 修复前复核发现根级 `pnpm test -- --force` 并非稳定全绿：Turbo 并行执行时，Web `before` 插入测试专属当前时间 Event，DB 包同时断言 Seed Event 必须恰好为 12，实际观察到 13，根 test 退出 1。
+- 隔离复跑 DB 为 `4/4`，Web 在失败的同一根级运行中为 `24/24`；证据表明这是跨包共享数据库的 fixture 竞争，不是 Seed 永久残留，也不是本轮文档改动造成的业务失败。
+- 该待办已由根测试入口串行化修复并取得连续 3 次全绿；阶段09仍未开始。
+
 ## 阶段08剩余红叉收口（2026-08-19）
 - 基线：`codex/stage-08-ai-pipeline`；外部路径启动 PostgreSQL/Redis 后，根 test 为 Web `23 pass / 1 fail`，失败仍是 24h 热点 `items.length > 0`；crawler `35/35`、DB `4/4`、AI `7/7`。
 - 目标：按已授权边界补测试专属当前时间热点、完成 Provider 每次 HTTP attempt 的 `ai_usage` 审计、解除 worker 依赖边界记录并收口全仓门禁。
@@ -10,7 +22,7 @@
 - 任务1反向已完成：临时禁用 fixture 得到 Web `23 pass / 1 fail` 且失败为热点 `items.length > 0`；立即还原后 `24/24`。
 - 任务2已完成：Provider attempt 记录、`ai_usage` 向前 migration `0006`、Worker 成功/失败幂等写入和 5 项真实审计场景完成；AI `10/10`，Worker `39/39`。
 - 任务2红→绿证据：旧 Worker usage 期望 `37` 在失败 Provider 两次请求纳入审计后实际为成功 `37` + 总 `39`；失败路径临时禁用审计时目标集成测试 `3 pass / 3 fail`，还原后 `6/6`，全绿。
-- 任务3已完成：根级 lint/typecheck/test/build 均 `7/7` 成功，测试为 Web `24`、AI `10`、Worker `39`、crawler `35`、DB `4`；`git diff --check`、允许路径和迁移约束复核通过，依赖/文档已收口，待本地提交。
+- 任务3已完成：根级 lint/typecheck/test/build 均 `7/7` 成功，测试为 Web `24`、AI `10`、Worker `39`、crawler `35`、DB `4`；`git diff --check`、允许路径和迁移约束复核通过，依赖/文档已收口，阶段08工程验收已提交至本地 `cdcf6ac`。
 
 ## 阶段08开工回执（2026-08-18）
 - 目标：把阶段07产出的英文 Article 接入可替换、可追踪、可缓存的 AI 流水线，产出可浏览的中文标题、摘要、分类和为什么重要。

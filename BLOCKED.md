@@ -2,7 +2,26 @@
 
 ## 当前结论（2026-08-19）
 
-当前阻塞：无。以下条目保留本轮及历史红叉的原始证据；真实模型质量验收按领导决定移至供应商选定后的上线前验收，本阶段不调用真实 Key、不购买额度、不伪造质量或成本结论。
+当前阻塞：无。根级测试的跨包共享数据库 fixture 竞争已通过根测试入口串行化修复，并连续 3 次取得 `7/7 successful`；以下条目保留原始红叉和历史边界证据。真实模型质量验收按领导决定移至供应商选定后的上线前验收，本阶段不调用真实 Key、不购买额度、不伪造质量或成本结论。
+
+## 阶段08根级测试隔离已收口（2026-08-19）
+
+- 根 `package.json` 的 `test` 固定使用 `turbo run test --concurrency=1`，避免 Web、DB、Worker 测试进程同时写读共享 PostgreSQL。
+- 正式入口 `$env:CI='true'; pnpm test -- --force --output-logs=errors-only` 连续 3 次退出 0，每次均为 Turbo `7/7 successful`、0 cached。
+- 同轮 `lint`、`typecheck`、`build` 均为 `7/7 successful`、退出 0；未改 Seed、生产查询、数据库时钟或 migration。
+- 复跑前只读确认并精确清理了中断遗留的 `stage08-it-*` 1 个 source 与 `controlled.example` 10 条文章；清理后及三次测试后均无该前缀残留。
+
+## 阶段08知识收尾发现根级测试并发竞争（修复前，2026-08-19）
+
+`neat-freak` 修复前复核在沙箱外执行根级 `$env:CI='true'; pnpm test -- --force`，结果退出 1。Web 测试的 `before` 会插入一个测试专属当前时间 Event；Turbo 同时运行 DB 包时，DB 的 Seed 精确计数断言观察到该临时行：
+
+```text
+@financehot/db:test: AssertionError [ERR_ASSERTION]: events=13，期望 = 12
+@financehot/db:test: 13 !== 12
+@financehot/web:test: tests 24 / pass 24 / fail 0
+```
+
+根级运行结束后隔离复跑 DB 为 `4 pass / 0 fail`，说明 Web fixture 已清理，不是永久 Seed 残留。源码证据位于 `apps/web/src/api.integration.test.ts` 的 `before/after` Event 生命周期与 `packages/db/src/__tests__/db-access.test.ts` 的 Event 精确计数断言。该问题已由根测试入口串行化隔离并重新取得根级稳定全绿证据；本条保留修复前原始输出。
 
 ## 阶段08本轮 Web fixture 引入的新失败（2026-08-19）
 

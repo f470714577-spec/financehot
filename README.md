@@ -2,7 +2,7 @@
 
 面向中文用户的**全球财经新闻实时聚合、过滤、事件化与 AI 分析平台**。不是门户新闻站，也不是简单 RSS 阅读器，而是 AI 驱动的全球财经情报过滤器。
 
-> 当前开发阶段：**阶段 08（Article AI 处理流水线，工程验收完成）**。项目仍是 Seed 数据开发版本，不是已上线的实时财经服务；真实模型质量验收已移至供应商选定后的上线前验收。
+> 当前开发阶段：**阶段 08（Article AI 处理流水线已实现，根级测试稳定门禁已恢复）**。项目仍是 Seed 数据开发版本，不是已上线的实时财经服务；真实模型质量验收已移至供应商选定后的上线前验收。
 
 当前进度与验证快照以 [`PROJECT_CONTEXT.md`](./PROJECT_CONTEXT.md) 为准。
 
@@ -11,8 +11,8 @@
 ```
 financehot/
 ├── apps/
-│   ├── web/            # Next.js 前台；后台 /admin 与业务 API 尚待后续阶段
-│   └── worker/         # 独立后台 Worker；阶段07消费 crawl/normalize 队列
+│   ├── web/            # Next.js 前台与业务 API；后台 /admin 尚待后续阶段
+│   └── worker/         # 独立后台 Worker；消费 crawl/normalize/ai_process 队列
 ├── packages/
 │   ├── shared/         # 基础公共层（类型/常量/工具/zod DTO/错误）
 │   ├── db/             # Drizzle schema、client、migration
@@ -94,7 +94,7 @@ pnpm --filter @financehot/worker ping:redis
 pnpm build       # 构建
 pnpm lint        # 代码检查
 pnpm typecheck   # 类型检查
-pnpm test        # 测试；需先 migrate，worker/crawler 含真实阶段06测试
+pnpm test        # 测试；需先 migrate，Worker 含真实 Redis/PostgreSQL 集成测试
 ```
 
 阶段 06 首次接手时先执行：
@@ -117,7 +117,7 @@ pnpm --filter @financehot/worker install-sources
 - [x] 阶段 05：新闻 API / 筛选 / 搜索 / 分页
 - [x] 阶段 06：RSS/API/Web Adapter、安全抓取、来源表驱动 crawl-once 与 Raw/Article 幂等
 - [x] 阶段 07：BullMQ crawl/normalize 队列、常驻调度、重试、恢复、追踪与幂等
-- [x] 阶段 08：AI Provider、过滤、翻译、摘要、分类、实体抽取（工程验收完成；真实模型质量待上线前验收）
+- [x] 阶段 08：AI Provider、过滤、翻译、摘要、分类、实体抽取（本地工程验收完成；根级测试入口已串行隔离共享数据库 fixture，稳定门禁恢复；真实模型质量待上线前验收）
 - [ ] 阶段 09+：Embedding / 聚类 / 评分 / 日报 / 后台 / 部署
 
-> 尚未实现：AI 调用、Embedding、Event Cluster、Finance/Heat Score、后台业务、用户系统。请勿把本地 Seed/诊断入口误解为生产服务。
+> 尚未实现：Embedding、Event Cluster、Finance/Heat Score、后台业务、用户系统。AI 调用链已完成本地受控 Provider 工程验收，但尚未使用真实模型做质量验收；请勿把本地 Seed/诊断入口误解为生产服务。

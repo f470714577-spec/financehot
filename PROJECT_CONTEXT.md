@@ -2,11 +2,11 @@
 
 > FinanceHot 项目当前状态的短期事实源。每次阶段完成后更新，防止长对话或新会话产生架构漂移。
 > 权威基线仍是《FinanceHot DeepSeek 开发总控包 V1》+ `docs/architecture.md` + ADR。
-> 最近复验：2026-08-19；阶段 05、阶段 06、阶段 07 和阶段 08 已完成本地工程验收；未推送、未部署、未上线。真实模型质量验收已移至供应商选定后的上线前验收。
+> 最近复验：2026-08-19；阶段 05、阶段 06、阶段 07 已完成本地验收，阶段 08 已实现并恢复根级稳定全绿门禁；未推送、未部署、未上线。真实模型质量验收已移至供应商选定后的上线前验收。
 
 ## 当前阶段
 
-阶段 08 —— Article AI 过滤、翻译、摘要、分类与实体抽取流水线（工程验收完成，本地稳定基线）
+阶段 08 —— Article AI 过滤、翻译、摘要、分类与实体抽取流水线（功能已实现；根级稳定门禁已恢复）
 
 ## 项目目标
 
@@ -60,8 +60,12 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - 阶段 00.1：架构修订（PASS）
 - 阶段 01：项目基础工程与开发环境（已完成，历史基线）
 - 阶段 02：数据库 Schema、Migration 与 Seed（PASS）
-- 阶段 03：UI 设计系统与整体框架（已完成，待审核）
+- 阶段 03：UI 设计系统与整体框架（已完成）
 - 阶段 04：核心前台页面（已完成，本地验收通过）
+- 阶段 05：新闻查询 API、筛选、搜索、分页与前台 DB 接入（已完成，本地验收通过）
+- 阶段 06：安全采集 Adapter 与同步 `crawl-once`（已完成，本地验收通过）
+- 阶段 07：BullMQ `crawl`/`normalize` 可靠流水线（已完成，本地验收通过）
+- 阶段 08：Article AI 处理流水线（已完成本地工程验收，根级稳定门禁已恢复；真实模型质量待上线前验收）
 
 ## 阶段 01 验证结果
 
@@ -121,12 +125,20 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - `sources.adapter_config` 由 `0002_fast_mattie_franklin.sql` 单向 migration 增加；15 个 Demo `.example` 源被禁用。`apps/worker` 的同步 `crawl-once` 先写 `raw_articles` 再写 `articles`，按 canonical URL/content_hash/title_hash 幂等，并记录 crawl task 成败/重试。
 - 当前来源清单 8 行：6 个启用官方 RSS、2 个低频 Web 候选 disabled；BIS `/doclist/` 因 robots 禁止而淘汰，当前不再请求，早期探测结果不纳入合规验收。真实 run-once 已有 success task 与 Raw/Article 输入；详细数字、来源条款和测试命令见 `docs/acceptance/phase-06.md`。
 
+## 阶段 07 当前结果
+
+- BullMQ 已接管 `crawl → normalize`：常驻调度、有限重试、failed set、stalled job 恢复、优雅关闭与数据库任务状态同步均已完成。
+- 同源锁、确定性 job ID、Raw `(source_id, content_hash)` 与 Article 三键去重共同保证幂等；阶段 07 不建立独立 DLQ。
+- 阶段 07 验收时 Worker `33/33`；阶段 08 接入 `ai_process` 后当前 Worker 全量为 `39/39`。完整历史证据见 `docs/acceptance/phase-07.md`。
+
 ## 阶段 08 当前结果
 
+- 2026-08-19 根级测试隔离收口：根 `package.json` 将 `test` 固定为 `turbo run test --concurrency=1`，以 workspace 包串行化隔离共享 PostgreSQL fixture；连续 3 次正式根级 test 均 `7/7 successful`、退出 0。未改 Seed、生产查询、数据库时钟或 migration。
+- 2026-08-19 修复前知识收尾复核：沙箱外根级 test 因 Web 测试临时 Event 与 DB Seed 精确计数并行竞争而退出 1（DB 观察到 Event `13 !== 12`）；同轮 Web `24/24`，隔离 DB `4/4`。该问题不是数据库永久残留，现已由根测试入口串行化修复。
 - 2026-08-19 工程验收完成：Web `24/24`、AI `10/10`、Worker `39/39`、crawler `35/35`、DB `4/4`，根级 lint/typecheck/test/build 均 `7/7` 成功，0 fail/skip/todo；Web 热点测试使用测试专属当前时间 Event，测试后精确清理为 0。
 - Provider 每次实际 HTTP attempt 均可写入 `ai_usage`，包含 `provider_attempt`、`outcome`、`http_status`、`usage_reported`；失败、重试、非法 JSON、Schema 失败和 timeout 均有覆盖，重复任务与双 Worker 竞争保持幂等。
 - `apps/worker/package.json` 相对 `4d146a8` 仅保留获批的 `@financehot/ai` 与 `zod` 必要依赖；新增向前 migration 为 `0006`，未改旧 migration、Seed、生产 Hot 查询或系统时钟。
-- 当前无工程阻塞；没有真实模型密钥，本地受控 Provider 只证明协议、审计、队列、数据库和缓存行为，不代表真实模型质量或成本。
+- 当前功能实现没有已知业务失败，根级测试稳定门禁已恢复；没有真实模型密钥，本地受控 Provider 只证明协议、审计、队列、数据库和缓存行为，不代表真实模型质量或成本。
 - OpenAI-compatible HTTP Provider 已实现：环境配置、unconfigured、401/429/5xx/超时/网络错误分类，有限重试，纯 JSON `JSON.parse` + Zod 校验，usage 与可选成本估算。
 - 五步 Prompt 已在 `prompts/index.ts` 版本化；正文使用数据边界，Prompt Injection 只作为文章内容处理。
 - Worker 已在现有 `crawl → normalize` 后为新 Article 创建确定性 `financial-filter` 任务，并按过滤→翻译→摘要→分类→实体抽取顺序执行；非财经 Article 保留、隐藏、设为 `filtered_out`。
@@ -138,7 +150,7 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - 阶段 05：新闻查询 API、筛选、搜索与分页；已完成本地正式验收。
 - 阶段 06：crawler 安全 Adapter、来源表驱动同步 crawl-once、Raw/Article 幂等（已完成本地验收）。
 - 阶段 07：BullMQ `crawl`/`normalize` Queue + Worker 状态机（已完成本地验收；详见 `docs/acceptance/phase-07.md`）。
-- 阶段 08：LLM Provider 实现 + Structured Output + 翻译/摘要/分类/过滤（工程验收完成；真实模型质量在上线前验收，详见 `docs/acceptance/phase-08.md`）。
+- 阶段 08：LLM Provider 实现 + Structured Output + 翻译/摘要/分类/过滤（已完成本地工程验收，根级测试稳定门禁已恢复；真实模型质量在上线前验收，详见 `docs/acceptance/phase-08.md`）。
 - 阶段 09：Embedding、事件聚类与关联（未开始）。
 - 阶段 16：多阶段生产 Dockerfile + 部署。
 
