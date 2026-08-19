@@ -43,6 +43,13 @@
       "when": 1787057600000,
       "tag": "0005_ai_usage_article_cascade",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787115165447,
+      "tag": "0006_productive_silver_sable",
+      "breakpoints": true
     }
   ]
 }

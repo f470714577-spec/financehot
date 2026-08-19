@@ -18,7 +18,7 @@ import {
   sources,
 } from '@financehot/db';
 import { createWorkerRuntime } from './queue/runtime';
-import { enqueueAiTask, processAiTask } from './ai-pipeline';
+import { createOrGetAiTask, enqueueAiTask, processAiTask } from './ai-pipeline';
 
 const envFile = resolve(process.cwd(), '../../.env');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -31,9 +31,62 @@ let createdSourceId = '';
 let providerServer: Server | undefined;
 let providerUrl = '';
 const requestBodies: string[] = [];
+type ProviderScriptStep = {
+  status: number;
+  content?: string;
+  usage?: { prompt_tokens: number; completion_tokens: number };
+  delayMs?: number;
+};
+const providerScripts = new Map<string, ProviderScriptStep[]>();
 
 function summaryText() {
   return '这条受控测试摘要说明了英文财经文章中的核心事实、关键数字、涉及主体和直接影响，内容只依据原文，不预测未提供的市场方向。'.repeat(2);
+}
+
+function financialFilterContent() {
+  return JSON.stringify({ isFinancial: true, score: 0.94, reason: '包含宏观、市场或公司经营事实' });
+}
+
+function setProviderScript(marker: string, steps: ProviderScriptStep[]) {
+  providerScripts.set(marker, [...steps]);
+}
+
+async function createAuditArticle(marker: string) {
+  const row = (await connection.db.insert(articles).values({
+    source_id: createdSourceId,
+    original_url: `https://controlled.example/audit/${queuePrefix}/${marker}`,
+    canonical_url: `https://controlled.example/audit/${queuePrefix}/${marker}`,
+    content_hash: `${queuePrefix}-audit-content-${marker}`,
+    title_hash: `${queuePrefix}-audit-title-${marker}`,
+    original_title: `Audit ${marker}`,
+    original_summary: `受控审计文章 ${marker} 包含财经事实。`,
+    original_language: 'zh',
+    published_at: new Date(),
+    processing_status: 'normalized',
+  }).returning({ id: articles.id }))[0];
+  createdArticleIds.push(row.id);
+  return row.id;
+}
+
+async function createAuditTask(marker: string, config: LLMConfig) {
+  const articleId = await createAuditArticle(marker);
+  const handle = await createOrGetAiTask(connection.db, articleId, 'financial-filter', config);
+  return { articleId, taskId: handle.task.id };
+}
+
+function auditConfig(overrides: Partial<LLMConfig> = {}): LLMConfig {
+  return {
+    provider: 'openai-compatible',
+    baseUrl: providerUrl,
+    model: 'controlled-model',
+    apiKey: 'local-controlled-key',
+    timeoutMs: 2_000,
+    maxRetries: 0,
+    retryDelayMs: 0,
+    inputCostPer1k: 1,
+    outputCostPer1k: 2,
+    ...overrides,
+  };
 }
 
 async function readBody(request: NodeJS.ReadableStream) {
@@ -48,6 +101,24 @@ before(async () => {
     providerServer = createServer(async (_request, response) => {
       const body = await readBody(_request);
       requestBodies.push(body);
+      const scriptedMarker = [...providerScripts.keys()].find((marker) => body.includes(marker));
+      if (scriptedMarker) {
+        const step = providerScripts.get(scriptedMarker)?.shift();
+        if (!step) {
+          response.writeHead(500, { 'content-type': 'application/json' });
+          response.end(JSON.stringify({ error: 'script exhausted' }));
+          return;
+        }
+        if (step.delayMs) await new Promise((resolvePromise) => setTimeout(resolvePromise, step.delayMs));
+        response.writeHead(step.status, { 'content-type': 'application/json' });
+        const payload: Record<string, unknown> = {
+          model: 'controlled-model',
+          choices: [{ message: { content: step.content ?? financialFilterContent() } }],
+        };
+        if (step.usage) payload.usage = step.usage;
+        response.end(JSON.stringify(payload));
+        return;
+      }
       if (body.includes('FAIL_ARTICLE') && body.includes('判断这篇文章')) {
         response.writeHead(500, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ error: 'controlled failure' }));
@@ -160,7 +231,8 @@ test('真实 Redis/PostgreSQL + 受控 OpenAI-compatible HTTP 完成十条 Artic
     assert.equal(successfulFinancial.length, 7);
     assert.equal(failed.length, 1);
     assert.equal(failed[0].retry_count, 2);
-    assert.equal(usage.length, 37);
+    assert.equal(usage.filter((row) => row.outcome === 'success').length, 37);
+    assert.equal(usage.length, 39);
     assert.equal(requestBodies.filter((body) => body.includes('FAIL_ARTICLE')).length, 2);
     assert.equal(articlesAfter.every((article) => rows.some((original) => original.id === article.id && original.originalTitle === article.original_title && original.originalSummary === article.original_summary)), true);
     assert.equal(articlesAfter.filter((article) => article.title_zh && article.summary_zh && article.ai_reason).length, 7);
@@ -193,4 +265,136 @@ test('真实 Redis/PostgreSQL + 受控 OpenAI-compatible HTTP 完成十条 Artic
   } finally {
     await runtime.close({ drain: true });
   }
+});
+
+test('Provider 429→503→成功在 Worker 中按顺序写入三条 usage', async () => {
+  const marker = 'AUDIT_RETRY_429_503';
+  const config = auditConfig({ maxRetries: 2 });
+  setProviderScript(marker, [
+    { status: 429, usage: { prompt_tokens: 5, completion_tokens: 2 } },
+    { status: 503, usage: { prompt_tokens: 6, completion_tokens: 3 } },
+    { status: 200, usage: { prompt_tokens: 20, completion_tokens: 12 } },
+  ]);
+  const { taskId, articleId } = await createAuditTask(marker, config);
+  const provider = new OpenAICompatibleProvider(config);
+  await processAiTask({ db: connection.db, config, provider, enqueue: async () => undefined }, taskId, 1);
+  const usage = await connection.db.select().from(ai_usage).where(eq(ai_usage.article_id, articleId));
+  usage.sort((left, right) => left.provider_attempt - right.provider_attempt);
+  assert.deepEqual(usage.map((row) => ({
+    attempt: row.provider_attempt,
+    outcome: row.outcome,
+    status: row.http_status,
+    prompt: row.prompt_tokens,
+    completion: row.completion_tokens,
+    reported: row.usage_reported,
+  })), [
+    { attempt: 1, outcome: 'http_error', status: 429, prompt: 5, completion: 2, reported: true },
+    { attempt: 2, outcome: 'http_error', status: 503, prompt: 6, completion: 3, reported: true },
+    { attempt: 3, outcome: 'success', status: 200, prompt: 20, completion: 12, reported: true },
+  ]);
+});
+
+test('Worker 失败任务保留非法 JSON 和 Schema 响应 usage', async () => {
+  const invalidMarker = 'AUDIT_INVALID_JSON';
+  const schemaMarker = 'AUDIT_SCHEMA';
+  const invalidConfig = auditConfig();
+  const schemaConfig = auditConfig();
+  const usage = { prompt_tokens: 21, completion_tokens: 9 };
+  setProviderScript(invalidMarker, [{ status: 200, content: 'not-json', usage }]);
+  setProviderScript(schemaMarker, [{ status: 200, content: '{"isFinancial":"yes","score":9,"reason":"bad"}', usage }]);
+  const invalidTask = await createAuditTask(invalidMarker, invalidConfig);
+  const schemaTask = await createAuditTask(schemaMarker, schemaConfig);
+  const invalidProvider = new OpenAICompatibleProvider(invalidConfig);
+  const schemaProvider = new OpenAICompatibleProvider(schemaConfig);
+  await assert.rejects(
+    processAiTask({ db: connection.db, config: invalidConfig, provider: invalidProvider, enqueue: async () => undefined }, invalidTask.taskId, 1),
+    (error: unknown) => {
+      assert.equal((error as { kind?: string }).kind, 'invalid_json');
+      return true;
+    },
+  );
+  await assert.rejects(
+    processAiTask({ db: connection.db, config: schemaConfig, provider: schemaProvider, enqueue: async () => undefined }, schemaTask.taskId, 1),
+    (error: unknown) => {
+      assert.equal((error as { kind?: string }).kind, 'schema');
+      return true;
+    },
+  );
+  for (const task of [invalidTask, schemaTask]) {
+    const rows = await connection.db.select().from(ai_usage).where(eq(ai_usage.article_id, task.articleId));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].outcome, task === invalidTask ? 'invalid_json' : 'schema');
+    assert.equal(rows[0].http_status, 200);
+    assert.equal(rows[0].prompt_tokens, 21);
+    assert.equal(rows[0].completion_tokens, 9);
+    assert.equal(rows[0].usage_reported, true);
+  }
+});
+
+test('Worker timeout 和 500 耗尽时每次 Provider 请求都有未知 usage 记录', async () => {
+  const serverMarker = 'AUDIT_500_EXHAUSTED';
+  const timeoutMarker = 'AUDIT_TIMEOUT_EXHAUSTED';
+  const config = auditConfig({ maxRetries: 2, timeoutMs: 20 });
+  setProviderScript(serverMarker, [{ status: 500 }, { status: 500 }, { status: 500 }]);
+  setProviderScript(timeoutMarker, [{ status: 200, delayMs: 100 }, { status: 200, delayMs: 100 }, { status: 200, delayMs: 100 }]);
+  const serverTask = await createAuditTask(serverMarker, config);
+  const timeoutTask = await createAuditTask(timeoutMarker, config);
+  const serverProvider = new OpenAICompatibleProvider(config);
+  const timeoutProvider = new OpenAICompatibleProvider(config);
+  await assert.rejects(processAiTask({ db: connection.db, config, provider: serverProvider, enqueue: async () => undefined }, serverTask.taskId, 1));
+  await assert.rejects(processAiTask({ db: connection.db, config, provider: timeoutProvider, enqueue: async () => undefined }, timeoutTask.taskId, 1));
+  const serverUsage = await connection.db.select().from(ai_usage).where(eq(ai_usage.article_id, serverTask.articleId));
+  const timeoutUsage = await connection.db.select().from(ai_usage).where(eq(ai_usage.article_id, timeoutTask.articleId));
+  assert.equal(serverUsage.length, 3);
+  assert.equal(timeoutUsage.length, 3);
+  assert.equal(serverUsage.every((row, index) => row.provider_attempt === index + 1 && row.outcome === 'http_error' && row.http_status === 500 && row.prompt_tokens === 0 && row.completion_tokens === 0 && row.usage_reported === false && row.estimated_cost === null), true);
+  assert.equal(timeoutUsage.every((row, index) => row.provider_attempt === index + 1 && row.outcome === 'timeout' && row.http_status === null && row.prompt_tokens === 0 && row.completion_tokens === 0 && row.usage_reported === false && row.estimated_cost === null), true);
+});
+
+test('同一任务重复处理不重复写入 usage 或再次请求 Provider', async () => {
+  const marker = 'AUDIT_REPEAT';
+  const config = auditConfig();
+  setProviderScript(marker, [{ status: 200, usage: { prompt_tokens: 20, completion_tokens: 12 } }]);
+  const { taskId, articleId } = await createAuditTask(marker, config);
+  const provider = new OpenAICompatibleProvider(config);
+  const options = { db: connection.db, config, provider, enqueue: async () => undefined };
+  await processAiTask(options, taskId, 1);
+  const usageCount = (await connection.db.select().from(ai_usage).where(eq(ai_usage.article_id, articleId))).length;
+  const requestCount = requestBodies.filter((body) => body.includes(marker)).length;
+  const cached = await processAiTask(options, taskId, 2);
+  assert.equal(cached.status, 'cached');
+  assert.equal((await connection.db.select().from(ai_usage).where(eq(ai_usage.article_id, articleId))).length, usageCount);
+  assert.equal(requestBodies.filter((body) => body.includes(marker)).length, requestCount);
+});
+
+test('两个真实 Worker 竞争同一任务时只有获胜者调用 Provider 并写 usage', async () => {
+  const marker = 'AUDIT_CONCURRENT';
+  const config = auditConfig();
+  setProviderScript(marker, [{
+    status: 200,
+    delayMs: 100,
+    content: '{"isFinancial":false,"score":0.1,"reason":"仅用于竞争审计"}',
+    usage: { prompt_tokens: 20, completion_tokens: 12 },
+  }]);
+  const { taskId, articleId } = await createAuditTask(marker, config);
+  const provider = new OpenAICompatibleProvider(config);
+  const competitionPrefix = queuePrefix + '-audit-competition';
+  const first = createWorkerRuntime({ db: connection.db, queuePrefix: competitionPrefix, concurrency: 1, attempts: 1, llmConfig: config, llmProvider: provider });
+  const second = createWorkerRuntime({ db: connection.db, queuePrefix: competitionPrefix, concurrency: 1, attempts: 1, llmConfig: config, llmProvider: provider });
+  await first.start({ schedule: false });
+  await second.start({ schedule: false });
+  try {
+    const payload = { version: 1 as const, articleId, aiTaskId: taskId };
+    await first.enqueueJob('ai_process', payload, { jobId: 'audit-competition-first' });
+    await second.enqueueJob('ai_process', payload, { jobId: 'audit-competition-second' });
+    await Promise.all([first.waitForIdle(10_000), second.waitForIdle(10_000)]);
+  } finally {
+    await Promise.all([first.close({ drain: true }), second.close({ drain: true })]);
+  }
+  const task = (await connection.db.select().from(ai_tasks).where(eq(ai_tasks.id, taskId)))[0];
+  const usage = await connection.db.select().from(ai_usage).where(eq(ai_usage.article_id, articleId));
+  assert.equal(task.status, 'success');
+  assert.equal(usage.length, 1);
+  assert.equal(usage[0].provider_attempt, 1);
+  assert.equal(requestBodies.filter((body) => body.includes(marker)).length, 1);
 });

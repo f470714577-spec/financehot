@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   integer,
   jsonb,
@@ -51,6 +52,10 @@ export const ai_usage = pgTable(
     task_type: text('task_type'),
     article_id: uuid('article_id').references(() => articles.id, { onDelete: 'cascade' }),
     attempt: integer('attempt').notNull().default(1),
+    provider_attempt: integer('provider_attempt').notNull().default(1),
+    outcome: text('outcome').notNull(),
+    http_status: integer('http_status'),
+    usage_reported: boolean('usage_reported').notNull().default(false),
     prompt_tokens: integer('prompt_tokens').notNull().default(0),
     completion_tokens: integer('completion_tokens').notNull().default(0),
     estimated_cost: real('estimated_cost'),
@@ -61,6 +66,6 @@ export const ai_usage = pgTable(
     index('ai_usage_article_id_idx').on(t.article_id),
     index('ai_usage_task_type_idx').on(t.task_type),
     index('ai_usage_created_at_idx').on(t.created_at),
-    unique('ai_usage_task_attempt_unique').on(t.ai_task_id, t.attempt),
+    unique('ai_usage_task_attempt_provider_attempt_unique').on(t.ai_task_id, t.attempt, t.provider_attempt),
   ],
 );

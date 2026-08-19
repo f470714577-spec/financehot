@@ -2,7 +2,7 @@
 
 面向中文用户的**全球财经新闻实时聚合、过滤、事件化与 AI 分析平台**。不是门户新闻站，也不是简单 RSS 阅读器，而是 AI 驱动的全球财经情报过滤器。
 
-> 当前开发阶段：**阶段 08（Article AI 处理流水线，正在本地验收）**。项目仍是 Seed 数据开发版本，不是已上线的实时财经服务；没有真实模型密钥时不宣称模型质量已验收。
+> 当前开发阶段：**阶段 08（Article AI 处理流水线，工程验收完成）**。项目仍是 Seed 数据开发版本，不是已上线的实时财经服务；真实模型质量验收已移至供应商选定后的上线前验收。
 
 当前进度与验证快照以 [`PROJECT_CONTEXT.md`](./PROJECT_CONTEXT.md) 为准。
 
@@ -117,7 +117,7 @@ pnpm --filter @financehot/worker install-sources
 - [x] 阶段 05：新闻 API / 筛选 / 搜索 / 分页
 - [x] 阶段 06：RSS/API/Web Adapter、安全抓取、来源表驱动 crawl-once 与 Raw/Article 幂等
 - [x] 阶段 07：BullMQ crawl/normalize 队列、常驻调度、重试、恢复、追踪与幂等
-- [ ] 阶段 08：AI Provider、过滤、翻译、摘要、分类、实体抽取（代码完成，真实服务验收进行中）
+- [x] 阶段 08：AI Provider、过滤、翻译、摘要、分类、实体抽取（工程验收完成；真实模型质量待上线前验收）
 - [ ] 阶段 09+：Embedding / 聚类 / 评分 / 日报 / 后台 / 部署
 
 > 尚未实现：AI 调用、Embedding、Event Cluster、Finance/Heat Score、后台业务、用户系统。请勿把本地 Seed/诊断入口误解为生产服务。

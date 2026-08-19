@@ -1,5 +1,17 @@
 # PROGRESS
 
+## 阶段08剩余红叉收口（2026-08-19）
+- 基线：`codex/stage-08-ai-pipeline`；外部路径启动 PostgreSQL/Redis 后，根 test 为 Web `23 pass / 1 fail`，失败仍是 24h 热点 `items.length > 0`；crawler `35/35`、DB `4/4`、AI `7/7`。
+- 目标：按已授权边界补测试专属当前时间热点、完成 Provider 每次 HTTP attempt 的 `ai_usage` 审计、解除 worker 依赖边界记录并收口全仓门禁。
+- 顺序：Web fixture 红→绿与反向验证 → Provider/schema/migration/Worker 审计红→绿与反向验证 → 依赖与文档 → 全仓门禁和本地提交。
+- 最大风险：Provider 失败/重试路径的 usage 载荷在不泄露密钥和正文的前提下跨 Provider、Worker、DB 保持完整且幂等；另需避免并行集成测试互相污染。
+- 环境说明：默认沙箱出现 `spawn EPERM`/Docker named pipe 权限错误，真实门禁统一使用 `CI=true` 的获批外部路径，不将环境错误伪装为业务结果。
+- 任务1已完成：测试插入当前时间唯一 Event，并关联 4 条既有可见 Article 以保持既有事件详情断言；Web `24/24`，测试 Event/关系清理后均为 0。
+- 任务1反向已完成：临时禁用 fixture 得到 Web `23 pass / 1 fail` 且失败为热点 `items.length > 0`；立即还原后 `24/24`。
+- 任务2已完成：Provider attempt 记录、`ai_usage` 向前 migration `0006`、Worker 成功/失败幂等写入和 5 项真实审计场景完成；AI `10/10`，Worker `39/39`。
+- 任务2红→绿证据：旧 Worker usage 期望 `37` 在失败 Provider 两次请求纳入审计后实际为成功 `37` + 总 `39`；失败路径临时禁用审计时目标集成测试 `3 pass / 3 fail`，还原后 `6/6`，全绿。
+- 任务3已完成：根级 lint/typecheck/test/build 均 `7/7` 成功，测试为 Web `24`、AI `10`、Worker `39`、crawler `35`、DB `4`；`git diff --check`、允许路径和迁移约束复核通过，依赖/文档已收口，待本地提交。
+
 ## 阶段08开工回执（2026-08-18）
 - 目标：把阶段07产出的英文 Article 接入可替换、可追踪、可缓存的 AI 流水线，产出可浏览的中文标题、摘要、分类和为什么重要。
 - 顺序：Provider/Schema/Prompt → ai_tasks 与 usage → 仅 ai_process 队列流水线 → 真实 Redis/PostgreSQL 端到端 → 反向验证、全量门禁、文档、本地提交。

@@ -15,12 +15,12 @@ export type ProviderErrorKind =
 export class LLMProviderError extends Error {
   readonly name = 'LLMProviderError';
   readonly kind: ProviderErrorKind;
-  readonly options: { status?: number; retryable?: boolean; cause?: unknown };
+  readonly options: { status?: number; retryable?: boolean; cause?: unknown; attempts?: readonly ProviderAttempt[] };
 
   constructor(
     kind: ProviderErrorKind,
     message: string,
-    options: { status?: number; retryable?: boolean; cause?: unknown } = {},
+    options: { status?: number; retryable?: boolean; cause?: unknown; attempts?: readonly ProviderAttempt[] } = {},
   ) {
     super(message);
     this.kind = kind;
@@ -33,6 +33,10 @@ export class LLMProviderError extends Error {
 
   get retryable() {
     return this.options.retryable ?? ['rate_limit', 'server', 'timeout', 'network'].includes(this.kind);
+  }
+
+  get attempts(): readonly ProviderAttempt[] {
+    return this.options.attempts ?? [];
   }
 }
 
@@ -51,6 +55,7 @@ export interface GenerateTextOutput {
     promptTokens?: number;
     completionTokens?: number;
   };
+  attempts: readonly ProviderAttempt[];
 }
 
 export interface GenerateJsonInput<T = unknown> extends GenerateTextInput {
@@ -64,6 +69,21 @@ export interface GenerateJsonOutput<T> {
     promptTokens?: number;
     completionTokens?: number;
   };
+  attempts: readonly ProviderAttempt[];
+}
+
+export type ProviderAttemptOutcome = 'success' | 'http_error' | 'invalid_response' | 'invalid_json' | 'schema' | 'timeout' | 'network';
+
+export interface ProviderAttempt {
+  providerAttempt: number;
+  outcome: ProviderAttemptOutcome;
+  httpStatus?: number;
+  model: string;
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+  };
+  usageReported: boolean;
 }
 
 export interface LLMProvider {
@@ -112,6 +132,12 @@ export interface ProviderResponse {
   ok: boolean;
   status: number;
   json(): Promise<unknown>;
+}
+
+interface ProviderRequestResult {
+  response: ProviderResponse;
+  attempts: ProviderAttempt[];
+  currentAttempt: ProviderAttempt;
 }
 
 export interface ProviderRequestInit {
@@ -205,12 +231,29 @@ interface OpenAIResponse {
   usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
 }
 
-function parseUsage(value: unknown) {
-  if (!value || typeof value !== 'object') return undefined;
+function parseUsage(value: unknown): { usage?: { promptTokens?: number; completionTokens?: number }; reported: boolean } {
+  const reported = Boolean(value && typeof value === 'object');
+  if (!reported) return { reported: false };
   const usage = value as { prompt_tokens?: unknown; completion_tokens?: unknown };
   const promptTokens = typeof usage.prompt_tokens === 'number' ? usage.prompt_tokens : undefined;
   const completionTokens = typeof usage.completion_tokens === 'number' ? usage.completion_tokens : undefined;
-  return promptTokens === undefined && completionTokens === undefined ? undefined : { promptTokens, completionTokens };
+  return {
+    usage: promptTokens === undefined && completionTokens === undefined ? undefined : { promptTokens, completionTokens },
+    reported,
+  };
+}
+
+function copyAttempts(attempts: readonly ProviderAttempt[]): ProviderAttempt[] {
+  return attempts.map((attempt) => ({
+    ...attempt,
+    usage: attempt.usage ? { ...attempt.usage } : undefined,
+  }));
+}
+
+function setAttemptUsage(attempt: ProviderAttempt, value: unknown) {
+  const parsed = parseUsage(value);
+  attempt.usage = parsed.usage;
+  attempt.usageReported = parsed.reported;
 }
 
 export class UnconfiguredLLMProvider implements LLMProvider {
@@ -262,21 +305,44 @@ export class OpenAICompatibleProvider implements LLMProvider {
       ...(input.system ? [{ role: 'system', content: input.system }] : []),
       { role: 'user', content: input.prompt },
     ];
-    const response = await this.request({
+    const call = await this.request({
       model,
       messages,
       temperature: input.temperature ?? 0,
       max_tokens: input.maxTokens ?? 1_200,
     });
-    const payload = await this.parseResponse(response);
+    let payload: OpenAIResponse;
+    try {
+      payload = (await call.response.json()) as OpenAIResponse;
+    } catch (error) {
+      call.currentAttempt.outcome = 'invalid_response';
+      throw new LLMProviderError('invalid_response', `Provider HTTP body 不是 JSON: ${errorMessage(error)}`, {
+        cause: error,
+        retryable: false,
+        attempts: copyAttempts(call.attempts),
+      });
+    }
+    if (!payload || typeof payload !== 'object') {
+      call.currentAttempt.outcome = 'invalid_response';
+      throw new LLMProviderError('invalid_response', 'Provider 响应不是对象', {
+        retryable: false,
+        attempts: copyAttempts(call.attempts),
+      });
+    }
+    setAttemptUsage(call.currentAttempt, payload?.usage);
     const content = payload.choices?.[0]?.message?.content;
     if (typeof content !== 'string') {
-      throw new LLMProviderError('invalid_response', 'Provider 响应缺少 choices[0].message.content', { retryable: false });
+      call.currentAttempt.outcome = 'invalid_response';
+      throw new LLMProviderError('invalid_response', 'Provider 响应缺少 choices[0].message.content', {
+        retryable: false,
+        attempts: copyAttempts(call.attempts),
+      });
     }
     return {
       text: content,
       model: typeof payload.model === 'string' ? payload.model : model,
-      usage: parseUsage(payload.usage),
+      usage: call.currentAttempt.usage,
+      attempts: copyAttempts(call.attempts),
     };
   }
 
@@ -290,19 +356,42 @@ export class OpenAICompatibleProvider implements LLMProvider {
     try {
       parsed = JSON.parse(output.text) as unknown;
     } catch (error) {
-      throw new LLMProviderError('invalid_json', `Provider 返回的 content 不是纯 JSON: ${errorMessage(error)}`, { cause: error, retryable: false });
+      const attempts = copyAttempts(output.attempts);
+      const current = attempts.at(-1);
+      if (current) current.outcome = 'invalid_json';
+      throw new LLMProviderError('invalid_json', `Provider 返回的 content 不是纯 JSON: ${errorMessage(error)}`, {
+        cause: error,
+        retryable: false,
+        attempts,
+      });
     }
     const result = input.schema.safeParse(parsed);
     if (!result.success) {
-      throw new LLMProviderError('schema', `Provider JSON 未通过 Schema 校验: ${result.error.message}`, { retryable: false, cause: result.error });
+      const attempts = copyAttempts(output.attempts);
+      const current = attempts.at(-1);
+      if (current) current.outcome = 'schema';
+      throw new LLMProviderError('schema', `Provider JSON 未通过 Schema 校验: ${result.error.message}`, {
+        retryable: false,
+        cause: result.error,
+        attempts,
+      });
     }
-    return { value: result.data, model: output.model, usage: output.usage };
+    return { value: result.data, model: output.model, usage: output.usage, attempts: output.attempts };
   }
 
-  private async request(body: Record<string, unknown>): Promise<ProviderResponse> {
+  private async request(body: Record<string, unknown>): Promise<ProviderRequestResult> {
     const url = `${this.config.baseUrl!.replace(/\/$/, '')}/chat/completions`;
     const runtime = globalThis as unknown as RuntimeGlobals;
+    const attempts: ProviderAttempt[] = [];
+    const model = String(body.model ?? this.model);
     for (let attempt = 0; attempt <= this.config.maxRetries; attempt += 1) {
+      const currentAttempt: ProviderAttempt = {
+        providerAttempt: attempt + 1,
+        outcome: 'network',
+        model,
+        usageReported: false,
+      };
+      attempts.push(currentAttempt);
       const controller = runtime.AbortController ? new runtime.AbortController() : undefined;
       const timeout = runtime.setTimeout && controller
         ? runtime.setTimeout(() => controller.abort(), this.config.timeoutMs)
@@ -317,8 +406,14 @@ export class OpenAICompatibleProvider implements LLMProvider {
           body: JSON.stringify(body),
           signal: controller?.signal,
         });
-        if (response.ok) return response;
+        currentAttempt.httpStatus = response.status;
+        if (response.ok) {
+          currentAttempt.outcome = 'success';
+          return { response, attempts, currentAttempt };
+        }
         const kind = responseStatusKind(response.status);
+        currentAttempt.outcome = 'http_error';
+        await this.captureUsage(response, currentAttempt);
         const shouldRetry = (kind === 'rate_limit' || kind === 'server') && attempt < this.config.maxRetries;
         if (shouldRetry) {
           await this.sleep(this.config.retryDelayMs * 2 ** attempt);
@@ -327,28 +422,35 @@ export class OpenAICompatibleProvider implements LLMProvider {
         throw new LLMProviderError(kind, `Provider HTTP ${response.status}`, {
           status: response.status,
           retryable: kind === 'rate_limit' || kind === 'server',
+          attempts: copyAttempts(attempts),
         });
       } catch (error) {
         if (error instanceof LLMProviderError) throw error;
         const timeoutError = error instanceof Error && (error.name === 'AbortError' || error.message.toLowerCase().includes('timeout'));
         const kind: ProviderErrorKind = timeoutError ? 'timeout' : 'network';
+        currentAttempt.outcome = kind;
         if (attempt < this.config.maxRetries) {
           await this.sleep(this.config.retryDelayMs * 2 ** attempt);
           continue;
         }
-        throw new LLMProviderError(kind, `Provider 请求失败: ${errorMessage(error)}`, { cause: error, retryable: true });
+        throw new LLMProviderError(kind, `Provider 请求失败: ${errorMessage(error)}`, {
+          cause: error,
+          retryable: true,
+          attempts: copyAttempts(attempts),
+        });
       } finally {
         if (timeout !== undefined) runtime.clearTimeout?.(timeout);
       }
     }
-    throw new LLMProviderError('network', 'Provider 请求未完成', { retryable: true });
+    throw new LLMProviderError('network', 'Provider 请求未完成', { retryable: true, attempts: copyAttempts(attempts) });
   }
 
-  private async parseResponse(response: ProviderResponse): Promise<OpenAIResponse> {
+  private async captureUsage(response: ProviderResponse, attempt: ProviderAttempt): Promise<void> {
     try {
-      return (await response.json()) as OpenAIResponse;
-    } catch (error) {
-      throw new LLMProviderError('invalid_response', `Provider HTTP body 不是 JSON: ${errorMessage(error)}`, { cause: error, retryable: false });
+      const payload = (await response.json()) as OpenAIResponse;
+      setAttemptUsage(attempt, payload?.usage);
+    } catch {
+      // HTTP 错误正文只用于尽力提取 usage，不把正文写入审计记录。
     }
   }
 }

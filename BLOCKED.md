@@ -1,5 +1,31 @@
 # BLOCKED
 
+## 当前结论（2026-08-19）
+
+当前阻塞：无。以下条目保留本轮及历史红叉的原始证据；真实模型质量验收按领导决定移至供应商选定后的上线前验收，本阶段不调用真实 Key、不购买额度、不伪造质量或成本结论。
+
+## 阶段08本轮 Web fixture 引入的新失败（2026-08-19）
+
+按任务书插入当前时间测试 Event 后，热点断言已通过，但同一 Web 门禁出现不同失败，故暂停 Web 受影响工作并保留原始证据：
+
+```text
+$env:CI='true'; pnpm --filter @financehot/web test -- --force
+tests 24
+pass 23
+fail 1
+skip 0
+todo 0
+
+失败：事件详情批量返回多信源和时间线，不发生逐 Article N+1
+AssertionError: assert.ok(body.data && body.data.articles.length > 3)
+实际原因：测试 before 插入的当前时间 Event 按 events 查询的 last_seen_at 排序成为第一条，但该测试 Event 没有关联 Article。
+热点榜只接受规定时间窗口：通过
+```
+
+同命令去掉 `--force` 复跑仍为同一失败；原始基线的热点 `items.length > 0` 失败已记录在下方历史条目。该失败由测试 fixture 与既有测试选择逻辑的交互引入，未修改生产 Hot 查询、Seed、数据库时钟或既有断言；Worker/AI/DB 不受影响的工作继续。
+
+当前结论（2026-08-19）：已为该测试 Event 关联 4 条既有可见 Article，保留既有事件详情断言并避免修改生产查询；恢复后 Web `24/24`，测试 Event/关联关系清理查询均为 0。当前 Web 阻塞：无。
+
 ## 阶段08真实服务恢复后基线不符（2026-08-18）
 
 Docker/Redis/PostgreSQL 已恢复且 migration 成功后，按原入口复跑 Web 历史基线；结果低于任务书要求的 Web 24，停止 Web/全量门禁相关工作，未修改 Web、Seed、旧测试或清库：
@@ -32,9 +58,11 @@ hot_24h: 0
 
 因此不能通过改时钟、改 Seed 或临时伪造热点记录满足旧测试；这些操作均越过本阶段边界。
 
-## 阶段08依赖声明与白名单冲突（2026-08-18）
+## 阶段08依赖声明与白名单冲突（历史证据，2026-08-18）
 
-阶段08 Worker 运行代码真实 import `@financehot/ai`，并在 `apps/worker/src/ai-pipeline.ts` 使用 `zod` 类型；干净 pnpm workspace 需要在 `apps/worker/package.json` 声明这两个依赖。但任务书的硬白名单只列出 `packages/*/package.json`，未授权修改 `apps/worker/package.json`。`pnpm-lock.yaml` 只能锁定 importer，不能替代 package manifest；删除该声明会使干净安装无法解析 Worker 的 AI 依赖。当前实现保留这两项必要声明以维持可运行性，并记录为未获授权的边界缺口；未擅自通过相对路径或重复代码规避该冲突。
+阶段08 Worker 运行代码真实 import `@financehot/ai`，并在 `apps/worker/src/ai-pipeline.ts` 使用 `zod` 类型；当时干净 pnpm workspace 需要在 `apps/worker/package.json` 声明这两个依赖，但原任务白名单未授权修改该文件。`pnpm-lock.yaml` 只能锁定 importer，不能替代 package manifest；删除该声明会使干净安装无法解析 Worker 的 AI 依赖。该历史证据保留，未通过相对路径或重复代码规避冲突。
+
+当前结论（2026-08-19）：本任务已正式授权 `@financehot/ai` 与 `zod` 两项依赖；相对 `4d146a8` 仅保留这两项必要声明，依赖边界已解除，当前依赖阻塞：无。
 
 ## 阶段08开工原始阻塞证据（2026-08-18）
 

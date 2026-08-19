@@ -3,9 +3,11 @@ import { createHash } from 'node:crypto';
 import {
   createLLMProvider,
   estimateCost,
+  LLMProviderError,
   loadLLMConfig,
   type LLMConfig,
   type LLMProvider,
+  type ProviderAttempt,
   type ProviderErrorKind,
   aiResultSchemas,
   type ClassifyResult,
@@ -222,7 +224,7 @@ async function persistSuccess(
   db: WorkerDb,
   task: typeof ai_tasks.$inferSelect,
   result: Record<string, unknown>,
-  usage: { promptTokens?: number; completionTokens?: number } | undefined,
+  attempts: readonly ProviderAttempt[],
   attemptNumber: number,
   config: LLMConfig,
   articleUpdate: (tx: WorkerTransaction) => Promise<void>,
@@ -237,28 +239,55 @@ async function persistSuccess(
       retry_count: Math.max(task.retry_count, attemptNumber - 1),
       updated_at: now,
     }).where(eq(ai_tasks.id, task.id));
-    await tx.insert(ai_usage).values({
-      ai_task_id: task.id,
-      provider: task.provider,
-      model: task.model,
-      task_type: task.task_type,
-      article_id: task.article_id,
-      attempt: attemptNumber,
-      prompt_tokens: usage?.promptTokens ?? 0,
-      completion_tokens: usage?.completionTokens ?? 0,
-      estimated_cost: estimateCost(usage, config),
-    }).onConflictDoNothing({ target: [ai_usage.ai_task_id, ai_usage.attempt] });
+    await persistProviderAttempts(tx, task, attemptNumber, attempts, config);
   });
 }
 
-async function persistFailure(db: WorkerDb, taskId: string, attemptNumber: number, error: unknown, retryable: boolean, now: Date) {
+async function persistProviderAttempts(
+  tx: WorkerTransaction,
+  task: typeof ai_tasks.$inferSelect,
+  attemptNumber: number,
+  attempts: readonly ProviderAttempt[],
+  config: LLMConfig,
+) {
+  if (!attempts.length) return;
+  await tx.insert(ai_usage).values(attempts.map((providerAttempt) => ({
+    ai_task_id: task.id,
+    provider: task.provider,
+    model: providerAttempt.model || task.model,
+    task_type: task.task_type,
+    article_id: task.article_id,
+    attempt: attemptNumber,
+    provider_attempt: providerAttempt.providerAttempt,
+    outcome: providerAttempt.outcome,
+    http_status: providerAttempt.httpStatus,
+    usage_reported: providerAttempt.usageReported,
+    prompt_tokens: providerAttempt.usage?.promptTokens ?? 0,
+    completion_tokens: providerAttempt.usage?.completionTokens ?? 0,
+    estimated_cost: estimateCost(providerAttempt.usage, config),
+  }))).onConflictDoNothing({ target: [ai_usage.ai_task_id, ai_usage.attempt, ai_usage.provider_attempt] });
+}
+
+async function persistFailure(
+  db: WorkerDb,
+  task: typeof ai_tasks.$inferSelect,
+  attemptNumber: number,
+  error: unknown,
+  retryable: boolean,
+  config: LLMConfig,
+  now: Date,
+) {
   const details = taskError(error);
-  await db.update(ai_tasks).set({
-    status: retryable ? 'retrying' : 'failed',
-    retry_count: Math.max(0, attemptNumber),
-    error: details.message,
-    updated_at: now,
-  }).where(eq(ai_tasks.id, taskId));
+  const attempts = error instanceof LLMProviderError ? error.attempts : [];
+  await db.transaction(async (tx) => {
+    await tx.update(ai_tasks).set({
+      status: retryable ? 'retrying' : 'failed',
+      retry_count: Math.max(0, attemptNumber),
+      error: details.message,
+      updated_at: now,
+    }).where(eq(ai_tasks.id, task.id));
+    await persistProviderAttempts(tx, task, attemptNumber, attempts, config);
+  });
 }
 
 async function applyResult(
@@ -338,7 +367,7 @@ export async function processAiTask(
       temperature: 0,
     });
     const articleUpdate = await applyResult(initial, output.value as Record<string, unknown> as FinancialFilterResult, now());
-    await persistSuccess(options.db, initial, output.value as Record<string, unknown>, output.usage, attemptNumber, config, articleUpdate, now());
+    await persistSuccess(options.db, initial, output.value as Record<string, unknown>, output.attempts, attemptNumber, config, articleUpdate, now());
     if (taskType === 'financial-filter' && (output.value as FinancialFilterResult).isFinancial) {
       await enqueueAiTask(options.db, initial.article_id, 'translate', options.enqueue, config);
     } else if (taskType === 'translate') {
@@ -351,7 +380,7 @@ export async function processAiTask(
     return { status: 'processed', taskType, articleId: initial.article_id, usageRecorded: true };
   } catch (error) {
     const details = taskError(error);
-    await persistFailure(options.db, taskId, attemptNumber, error, details.retryable, now());
+    await persistFailure(options.db, initial, attemptNumber, error, details.retryable, config, now());
     throw error;
   }
 }

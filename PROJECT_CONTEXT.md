@@ -2,11 +2,11 @@
 
 > FinanceHot 项目当前状态的短期事实源。每次阶段完成后更新，防止长对话或新会话产生架构漂移。
 > 权威基线仍是《FinanceHot DeepSeek 开发总控包 V1》+ `docs/architecture.md` + ADR。
-> 最近复验：2026-08-18；阶段 05、阶段 06 和阶段 07 已完成本地真实验收；阶段 08 正在验收；未推送、未部署、未上线。
+> 最近复验：2026-08-19；阶段 05、阶段 06、阶段 07 和阶段 08 已完成本地工程验收；未推送、未部署、未上线。真实模型质量验收已移至供应商选定后的上线前验收。
 
 ## 当前阶段
 
-阶段 08 —— Article AI 过滤、翻译、摘要、分类与实体抽取流水线（代码与 Provider 测试已完成，真实服务验收待恢复）
+阶段 08 —— Article AI 过滤、翻译、摘要、分类与实体抽取流水线（工程验收完成，本地稳定基线）
 
 ## 项目目标
 
@@ -123,10 +123,14 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 
 ## 阶段 08 当前结果
 
+- 2026-08-19 工程验收完成：Web `24/24`、AI `10/10`、Worker `39/39`、crawler `35/35`、DB `4/4`，根级 lint/typecheck/test/build 均 `7/7` 成功，0 fail/skip/todo；Web 热点测试使用测试专属当前时间 Event，测试后精确清理为 0。
+- Provider 每次实际 HTTP attempt 均可写入 `ai_usage`，包含 `provider_attempt`、`outcome`、`http_status`、`usage_reported`；失败、重试、非法 JSON、Schema 失败和 timeout 均有覆盖，重复任务与双 Worker 竞争保持幂等。
+- `apps/worker/package.json` 相对 `4d146a8` 仅保留获批的 `@financehot/ai` 与 `zod` 必要依赖；新增向前 migration 为 `0006`，未改旧 migration、Seed、生产 Hot 查询或系统时钟。
+- 当前无工程阻塞；没有真实模型密钥，本地受控 Provider 只证明协议、审计、队列、数据库和缓存行为，不代表真实模型质量或成本。
 - OpenAI-compatible HTTP Provider 已实现：环境配置、unconfigured、401/429/5xx/超时/网络错误分类，有限重试，纯 JSON `JSON.parse` + Zod 校验，usage 与可选成本估算。
 - 五步 Prompt 已在 `prompts/index.ts` 版本化；正文使用数据边界，Prompt Injection 只作为文章内容处理。
 - Worker 已在现有 `crawl → normalize` 后为新 Article 创建确定性 `financial-filter` 任务，并按过滤→翻译→摘要→分类→实体抽取顺序执行；非财经 Article 保留、隐藏、设为 `filtered_out`。
-- 真实 Redis/PostgreSQL 十条样本、失败 retry/failed、重复入队缓存命中、migration 与全量门禁尚未完成；当前环境阻塞原始证据见 `BLOCKED.md` 顶部。
+- 真实 Redis/PostgreSQL 十条样本、失败 retry/failed、重复入队缓存命中、migration 与全量门禁均已完成；历史红叉和原始证据见 `BLOCKED.md`。
 - 当前没有真实模型密钥；即使本地受控 HTTP Provider 验收通过，也必须明确记录“真实模型质量未验收”。
 
 ## 架构待办
@@ -134,7 +138,7 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - 阶段 05：新闻查询 API、筛选、搜索与分页；已完成本地正式验收。
 - 阶段 06：crawler 安全 Adapter、来源表驱动同步 crawl-once、Raw/Article 幂等（已完成本地验收）。
 - 阶段 07：BullMQ `crawl`/`normalize` Queue + Worker 状态机（已完成本地验收；详见 `docs/acceptance/phase-07.md`）。
-- 阶段 08：LLM Provider 实现 + Structured Output + 翻译/摘要/分类/过滤（进行中，详见 `docs/acceptance/phase-08.md`）。
+- 阶段 08：LLM Provider 实现 + Structured Output + 翻译/摘要/分类/过滤（工程验收完成；真实模型质量在上线前验收，详见 `docs/acceptance/phase-08.md`）。
 - 阶段 09：Embedding、事件聚类与关联（未开始）。
 - 阶段 16：多阶段生产 Dockerfile + 部署。
 

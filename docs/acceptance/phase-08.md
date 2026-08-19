@@ -1,6 +1,6 @@
 # 阶段 08 验收记录
 
-> 状态：进行中。本文只记录实际执行过的命令和输出；没有真实模型密钥时不伪造模型质量结论。
+> 状态：工程验收完成（本地稳定基线）。本文只记录实际执行过的命令和输出；真实模型质量验收已由领导移至供应商选定后的上线前验收。
 
 ## 范围与边界
 
@@ -9,7 +9,16 @@
 - Provider 是由 `LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_MODEL`、`LLM_API_KEY` 配置的 OpenAI-compatible HTTP 适配器。
 - 当前没有真实模型密钥；本地受控 HTTP Provider 不能证明真实模型质量，最终结论必须保留“真实模型质量未验收”。
 
-## 已完成的静态与 Provider 证据
+## 2026-08-19 当前收口结论
+
+- Web 测试专属当前时间 Event 已插入并在 after 中按确定 ID 清理；Web `24/24`，清理后测试 Event 与关联关系均为 0。临时禁用 fixture 时同一热点断言红（`23 pass / 1 fail`），还原后绿（`24/24`）。
+- Provider 每次实际 HTTP attempt 均携带不含密钥、Authorization、Prompt 或响应正文的审计记录；`ai_usage` 增加 `provider_attempt`、`outcome`、`http_status`、`usage_reported`，新增向前 migration `0006`，唯一约束为 `(ai_task_id, attempt, provider_attempt)`。
+- AI `10/10`、Worker `39/39`，覆盖重试成功、非法 JSON、Schema 失败、timeout/500 耗尽、重复处理和双 Worker 竞争；失败或无 usage 时标记供应商未报告，成本保持 NULL。
+- 失败路径红→绿：临时跳过 Worker 的失败审计写入时 AI pipeline 集成测试为 `3 pass / 3 fail`，失败包含 `37 !== 39`、非法 JSON/Schema `0 !== 1` 和耗尽请求 `0 !== 3`；还原后同一入口 `6 pass / 0 fail / 0 skip / 0 todo`。
+- 根级 `$env:CI='true'; pnpm lint -- --force`、`typecheck`、`test`、`build` 均退出 0，Turbo 均 `7/7 successful`；全仓测试数量为 Web `24`、AI `10`、Worker `39`、crawler `35`、DB `4`，均 0 fail/skip/todo。
+- `apps/worker/package.json` 相对 `4d146a8` 仅有获批的 `@financehot/ai` 与 `zod` 必要声明；本阶段当前阻塞为“无”。未调用真实 Key，未宣称真实模型质量或成本。
+
+## 历史静态与 Provider 证据（2026-08-18）
 
 ```text
 node packages/ai/src/provider.test.ts
@@ -29,7 +38,7 @@ node packages/ai/src/provider.test.ts
 
 AI、Worker、DB 直接 TypeScript 检查已退出 0；真实服务恢复后的包级测试见下文。
 
-## 真实 PostgreSQL/Redis 与 migration
+## 历史真实 PostgreSQL/Redis 与 migration（2026-08-18）
 
 ```text
 docker compose up -d postgres redis
@@ -47,7 +56,7 @@ ai_usage.article_id  REFERENCES articles(id) ON DELETE CASCADE
 $env:CI=true; pnpm --filter @financehot/worker test -- --force
 ```
 
-## 真实队列与数据库端到端证据
+## 历史真实队列与数据库端到端证据（2026-08-18）
 
 测试入口为 `apps/worker/src/ai-pipeline.integration.test.ts`，使用真实 PostgreSQL/Redis、真实 Worker/BullMQ、真实数据库 Schema 和本地受控 OpenAI-compatible HTTP Provider；受控服务只模拟外部协议，不替换流水线核心。
 
@@ -115,7 +124,7 @@ command failed exit code 1
 ℹ todo 0
 ```
 
-## 根级工程门禁
+## 历史根级工程门禁（2026-08-18）
 
 ```text
 $env:CI='true'; pnpm lint -- --force
@@ -146,6 +155,6 @@ ERROR: run failed
 exit code 1
 ```
 
-## 当前实际阻塞
+## 历史阻塞（已解除）
 
-2026-08-18 Docker Desktop 已从 `F:\DOCKER\DockerDesktop\Docker Desktop.exe` 启动，PostgreSQL/Redis 均 healthy，0003/0004/0005 migration 已成功。Worker `34/34`、DB `4/4`、crawler `35/35` 全绿；Web 历史基线为 `23 pass / 1 fail`，失败是热点时间窗口 Seed 为空，原始输出已置于 `BLOCKED.md` 顶部。Web/全量门禁受该既有数据问题影响，未修改 Web、Seed 或旧测试。没有真实模型密钥，因此真实模型质量未验收。
+2026-08-18 Docker Desktop 已从 `F:\DOCKER\DockerDesktop\Docker Desktop.exe` 启动，PostgreSQL/Redis 均 healthy，0003/0004/0005 migration 已成功。Worker `34/34`、DB `4/4`、crawler `35/35` 全绿；Web 历史基线为 `23 pass / 1 fail`，失败是热点时间窗口 Seed 为空，原始输出已置于 `BLOCKED.md` 顶部。Web/全量门禁受该既有数据问题影响，未修改 Web、Seed 或旧测试。该阻塞已由本轮测试专属当前时间 Event 解除；没有真实模型密钥，因此真实模型质量仍未验收。

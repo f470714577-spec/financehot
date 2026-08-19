@@ -205,6 +205,106 @@ const cases: TestCase[] = [
       assertEqual(target, 'http://provider-two/v1/chat/completions', 'replacement target');
     },
   },
+  {
+    name: '429→503→成功为每个 Provider attempt 保留有序审计记录',
+    async run() {
+      let calls = 0;
+      const provider = new OpenAICompatibleProvider(config({ maxRetries: 2 }), {
+        fetchFn: async () => {
+          calls += 1;
+          if (calls === 1) return response({ usage: { prompt_tokens: 3, completion_tokens: 1 } }, 429);
+          if (calls === 2) return response({ usage: { prompt_tokens: 4, completion_tokens: 2 } }, 503);
+          return response(successBody());
+        },
+      });
+      const output = await provider.generateJSONWithUsage({ prompt: 'test', schema: financialFilterSchema });
+      assertEqual(calls, 3, 'provider calls');
+      assertDeepEqual(output.attempts.map((attempt) => ({
+        providerAttempt: attempt.providerAttempt,
+        outcome: attempt.outcome,
+        httpStatus: attempt.httpStatus,
+        model: attempt.model,
+        usage: attempt.usage,
+        usageReported: attempt.usageReported,
+      })), [
+        { providerAttempt: 1, outcome: 'http_error', httpStatus: 429, model: 'model-one', usage: { promptTokens: 3, completionTokens: 1 }, usageReported: true },
+        { providerAttempt: 2, outcome: 'http_error', httpStatus: 503, model: 'model-one', usage: { promptTokens: 4, completionTokens: 2 }, usageReported: true },
+        { providerAttempt: 3, outcome: 'success', httpStatus: 200, model: 'model-one', usage: { promptTokens: 13, completionTokens: 7 }, usageReported: true },
+      ], 'attempt audit');
+    },
+  },
+  {
+    name: '非法 JSON 和 Schema 失败保留响应 usage 与结果类型',
+    async run() {
+      const invalidJsonProvider = new OpenAICompatibleProvider(config(), {
+        fetchFn: async () => response(successBody('not-json')),
+      });
+      await assertRejects(
+        invalidJsonProvider.generateJSON({ prompt: 'test', schema: financialFilterSchema }),
+        (error) => error instanceof LLMProviderError
+          && error.kind === 'invalid_json'
+          && error.attempts.length === 1
+          && error.attempts[0].outcome === 'invalid_json'
+          && error.attempts[0].usageReported
+          && JSON.stringify(error.attempts[0].usage) === JSON.stringify({ promptTokens: 13, completionTokens: 7 }),
+        'invalid JSON audit',
+      );
+
+      const schemaProvider = new OpenAICompatibleProvider(config(), {
+        fetchFn: async () => response(successBody('{"isFinancial":"yes","score":9,"reason":"x"}')),
+      });
+      await assertRejects(
+        schemaProvider.generateJSON({ prompt: 'test', schema: financialFilterSchema }),
+        (error) => error instanceof LLMProviderError
+          && error.kind === 'schema'
+          && error.attempts.length === 1
+          && error.attempts[0].outcome === 'schema'
+          && error.attempts[0].usageReported
+          && JSON.stringify(error.attempts[0].usage) === JSON.stringify({ promptTokens: 13, completionTokens: 7 }),
+        'schema audit',
+      );
+    },
+  },
+  {
+    name: 'timeout 和 500 耗尽重试时每次请求都有无 usage 审计记录',
+    async run() {
+      const serverProvider = new OpenAICompatibleProvider(config({ maxRetries: 2 }), {
+        fetchFn: async () => response({}, 500),
+      });
+      await assertRejects(
+        serverProvider.generateText({ prompt: 'test' }),
+        (error) => error instanceof LLMProviderError
+          && error.kind === 'server'
+          && error.attempts.length === 3
+          && error.attempts.every((attempt, index) => attempt.providerAttempt === index + 1
+            && attempt.outcome === 'http_error'
+            && attempt.httpStatus === 500
+            && attempt.usageReported === false
+            && attempt.usage === undefined),
+        'server audit',
+      );
+
+      const timeoutProvider = new OpenAICompatibleProvider(config({ maxRetries: 2 }), {
+        fetchFn: async () => {
+          const timeoutError = new Error('timed out');
+          timeoutError.name = 'AbortError';
+          throw timeoutError;
+        },
+      });
+      await assertRejects(
+        timeoutProvider.generateText({ prompt: 'test' }),
+        (error) => error instanceof LLMProviderError
+          && error.kind === 'timeout'
+          && error.attempts.length === 3
+          && error.attempts.every((attempt, index) => attempt.providerAttempt === index + 1
+            && attempt.outcome === 'timeout'
+            && attempt.httpStatus === undefined
+            && attempt.usageReported === false
+            && attempt.usage === undefined),
+        'timeout audit',
+      );
+    },
+  },
 ];
 
 const runtime = globalThis as unknown as { console?: { log(message: string): void } };

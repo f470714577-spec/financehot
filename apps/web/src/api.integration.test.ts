@@ -43,11 +43,51 @@ async function list<T>(handler: (request: Request) => Promise<Response>, path: s
 }
 
 describe('阶段 05 PostgreSQL Route Handler 集成测试', () => {
-  before(() => {
+  let testHotEventId = '';
+
+  before(async () => {
     assert.ok(process.env.DATABASE_URL || 'postgresql://financehot:financehot@localhost:5433/financehot');
+    const now = new Date();
+    const supportingArticles = (await getDb().pool.query<{ articleId: string }>(`
+      SELECT ea.article_id AS "articleId"
+      FROM event_articles ea
+      INNER JOIN articles a ON a.id = ea.article_id
+      WHERE a.is_hidden = false
+      LIMIT 4
+    `)).rows;
+    assert.equal(supportingArticles.length, 4);
+    const inserted = await getDb().pool.query<{ id: string }>(`
+      INSERT INTO events (
+        title, summary, finance_score, heat_score, first_seen_at, last_seen_at,
+        article_count, source_count, status
+      ) VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8)
+      RETURNING id
+    `, [
+      `阶段08测试热点-${now.getTime()}`,
+      '仅供阶段08 Web 集成测试使用的当前时间热点。',
+      99,
+      99,
+      now,
+      supportingArticles.length,
+      1,
+      'developing',
+    ]);
+    testHotEventId = inserted.rows[0]?.id ?? '';
+    assert.ok(testHotEventId);
+    for (const { articleId } of supportingArticles) {
+      await getDb().pool.query(`
+        INSERT INTO event_articles (
+          event_id, article_id, is_primary, similarity_score, confidence, cluster_method
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+      `, [testHotEventId, articleId, false, 1, 1, 'manual']);
+    }
   });
 
   after(async () => {
+    if (testHotEventId) {
+      await getDb().pool.query('DELETE FROM event_articles WHERE event_id = $1', [testHotEventId]);
+      await getDb().pool.query('DELETE FROM events WHERE id = $1', [testHotEventId]);
+    }
     await getDb().pool.end();
   });
 

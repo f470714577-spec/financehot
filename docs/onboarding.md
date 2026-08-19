@@ -1,6 +1,6 @@
 # FinanceHot 新机器接手说明（Onboarding）
 
-> 状态：当前有效 · 最近核对：2026-08-18
+> 状态：当前有效 · 最近核对：2026-08-19
 > 目标：让另一台机器上的开发者 / Agent 快速拉起环境并接上开发进度
 
 ## 1. 项目与仓库
@@ -42,7 +42,7 @@ pnpm test        # 数据库包需要已迁移并完成 Seed 的 PostgreSQL
 pnpm build
 ```
 
-2026-08-18 最近复验：Docker PostgreSQL/Redis 已恢复；阶段08 AI Provider 7/7、Worker 34/34、crawler 35/35、数据库 4/4 全绿，十条英文 Article 的真实队列/数据库验收已完成。Web 历史基线为 23 pass、1 fail，失败是热点时间窗口 Seed 为空；全量门禁因此不宣称完成。原始证据见 [`BLOCKED.md`](../BLOCKED.md) 和 [`docs/acceptance/phase-08.md`](./acceptance/phase-08.md)。
+2026-08-19 最近复验：Docker PostgreSQL/Redis 已恢复；根级 lint/typecheck/test/build 均 `7/7 successful`；Web `24/24`、AI `10/10`、Worker `39/39`、crawler `35/35`、DB `4/4`，均 0 fail/skip/todo。阶段08工程验收完成；真实模型质量已由领导移至供应商选定后的上线前验收，不调用真实 Key。历史红叉和红→绿证据见 [`BLOCKED.md`](../BLOCKED.md) 与 [`docs/acceptance/phase-08.md`](./acceptance/phase-08.md)。
 
 ## 5. 启动
 
@@ -80,5 +80,5 @@ pnpm --filter @financehot/worker crawl-once
 - 阶段 05：查询 API、筛选、搜索、分页和前台 DB 接入已完成并通过 PostgreSQL 真实测试。
 - 阶段 06：RSS/Atom、JSON API、HTML Web Adapter、SSRF/DNS/重定向/robots/限流/重试和同步 `crawl-once` 已完成；持久化只在 `apps/worker` 组合，crawler 不写库。
 - 阶段 07：BullMQ `crawl`/`normalize` 队列化、常驻调度、重试、恢复、追踪和幂等已完成；只启动已有 handler。
-- 下一阶段：阶段 08 —— LLM Provider 与 AI 处理；未经允许不要提前实现。
+- 下一阶段：阶段 09 —— Embedding、事件聚类与后续能力；未经允许不要提前实现。
 - 注意：宿主机 Postgres 端口用 **5433**（本机 PG14 占 5432 的规避，见 `.env.example`）；接手后 `docker compose up -d postgres redis` 即可。

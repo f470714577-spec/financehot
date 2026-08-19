@@ -209,9 +209,10 @@ sources 1 ── N raw_articles 0..1 ── 1 articles N ── N sources
 - 索引：status、article_id、task_type
 - **不承担 Pipeline 粗粒度状态**——粗粒度由 `articles.processing_status` 表达
 
-**ai_usage**（每次 AI 调用成本）
+**ai_usage**（每次 Provider HTTP attempt 的成本与审计）
 
-- 主键 `id`；增加 `attempt`，与 `ai_task_id` 组成唯一约束；字段：**ai_task_id(FK → ai_tasks.id)**, provider, model, task_type, article_id(FK 可空), attempt, prompt_tokens, completion_tokens, estimated_cost, created_at
+- 主键 `id`；`attempt` 表示 BullMQ task attempt，`provider_attempt` 表示该任务内实际 Provider HTTP attempt；字段：**ai_task_id(FK → ai_tasks.id)**, provider, model, task_type, article_id(FK 可空), attempt, provider_attempt, outcome, http_status, usage_reported, prompt_tokens, completion_tokens, estimated_cost, created_at。唯一约束为 `(ai_task_id, attempt, provider_attempt)`。
+- 每次实际请求都留存可区分的结果类型和 HTTP 状态（如有）；供应商未报告 usage 时 token 为 0、`usage_reported=false`、`estimated_cost=NULL`。不得保存 API Key、Authorization、Prompt 或响应正文。
 - 索引：ai_task_id、article_id、task_type、created_at
 - 用途：统一 Article/Event/Daily Report 等 AI 成本归因，追溯到具体 ai_task
 
