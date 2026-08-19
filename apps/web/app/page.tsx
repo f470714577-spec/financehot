@@ -42,8 +42,8 @@ export default async function HomePage() {
               </div>
             </section>
             <section className="rounded-lg border border-line bg-surface p-5">
-              <SectionTitle label="当前范围" title="阶段05边界" />
-              <p className="text-sm leading-6 text-ink-muted">页面、筛选、搜索、分页和详情均已通过同一查询服务读取 PostgreSQL；当前数据仍是明确标记的 Seed 版本，不代表实时财经服务。</p>
+              <SectionTitle label="当前范围" title="可信事件聚合" />
+              <p className="text-sm leading-6 text-ink-muted">首页优先展示多信源 Event，详情保留每篇 Article 的原始入口；当前数据仍是明确标记的 Seed 版本，不代表实时财经服务。</p>
               <div className="mt-4 flex flex-wrap gap-2"><span className="rounded-md bg-signal-cyan/10 px-2 py-1 text-xs text-signal-cyan">PostgreSQL Seed</span><span className="rounded-md bg-surface-muted px-2 py-1 text-xs text-ink-muted">非实时</span></div>
             </section>
           </aside>

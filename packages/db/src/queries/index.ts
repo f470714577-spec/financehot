@@ -175,7 +175,13 @@ const articleJsonValue = sql`jsonb_build_object(
   'title', coalesce(a.title_zh, a.original_title, ''),
   'summary', coalesce(a.summary_zh, a.original_summary, ''),
   'publishedAt', a.published_at,
-  'source', jsonb_build_object('id', s.id, 'name', s.name, 'country', s.country),
+  'source', jsonb_build_object(
+    'id', s.id,
+    'name', s.name,
+    'country', s.country,
+    'sourceLevel', s.source_level,
+    'credibilityScore', s.credibility_score
+  ),
   'score', coalesce(a.finance_score, 0),
   'financeScore', a.finance_score,
   'marketImpactScore', a.market_impact_score,
@@ -444,7 +450,11 @@ export async function getEvent(db: QueryDb, id: string): Promise<EventDetail | n
       ${articleJoins}
       WHERE a.is_hidden = false
         AND EXISTS (SELECT 1 FROM event_articles ea WHERE ea.event_id = ${id}::uuid AND ea.article_id = a.id)
-      ORDER BY a.published_at DESC NULLS LAST, a.id DESC
+      ORDER BY CASE s.source_level
+        WHEN 'A' THEN 0 WHEN 'B' THEN 1 WHEN 'C' THEN 2 WHEN 'D' THEN 3 WHEN 'E' THEN 4 ELSE 5 END ASC,
+        s.credibility_score DESC NULLS LAST,
+        a.published_at DESC NULLS LAST,
+        a.id DESC
       LIMIT 50
     `),
     execute<{ value: unknown }>(db, sql`

@@ -39,10 +39,20 @@ export const entityExtractionSchema = z.object({
 }).strict();
 export type EntityExtractionResult = z.infer<typeof entityExtractionSchema>;
 
+export const eventClusterSchema = z.object({
+  decision: z.enum(['merge', 'separate']),
+  confidence: z.number().min(0).max(1),
+  reason: boundedText(300),
+  title: boundedText(160),
+  summary: boundedText(500),
+}).strict();
+export type EventClusterResult = z.infer<typeof eventClusterSchema>;
+
 export const aiResultSchemas = {
   'financial-filter': financialFilterSchema,
   translate: translateSchema,
   summarize: summarizeSchema,
   classify: classifySchema,
   'entity-extraction': entityExtractionSchema,
+  'event-cluster': eventClusterSchema,
 } as const;

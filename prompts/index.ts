@@ -1,4 +1,4 @@
-export type AiPromptTask = 'financial-filter' | 'translate' | 'summarize' | 'classify' | 'entity-extraction';
+export type AiPromptTask = 'financial-filter' | 'translate' | 'summarize' | 'classify' | 'entity-extraction' | 'event-cluster';
 
 export interface PromptArticle {
   originalTitle: string;
@@ -33,7 +33,7 @@ function definition(taskType: AiPromptTask, version: string, instruction: string
   return {
     taskType,
     version,
-    system: `你是 FinanceHot 阶段08的结构化财经新闻处理器。事实正确优先，不补写文章没有提供的事实。${boundary}`,
+    system: `你是 FinanceHot 阶段08/10的结构化财经新闻处理器。事实正确优先，不补写文章没有提供的事实。${boundary}`,
     buildUserPrompt: (article, context) => [
       instruction,
       context ? `<ALLOWED_REFERENCE_DATA>\n${context}\n</ALLOWED_REFERENCE_DATA>` : '',
@@ -73,6 +73,12 @@ export const promptDefinitions: Record<AiPromptTask, PromptDefinition> = {
     'phase08-entity-extraction-v1',
     '抽取文章明确提到的国家、市场、资产、公司和人物。国家 role 只能是 mentioned、primary 或 impact。tickerCandidates 只有在文章原文明确给出标准 ticker 且与主体对应时才能填写；不确定、推测或只知道公司名称时必须返回空数组，绝不猜 ticker。',
     '{"countries": [{"code": string, "role": "mentioned"|"primary"|"impact"}], "markets": string[], "assets": string[], "companies": string[], "people": string[], "tickerCandidates": string[]}',
+  ),
+  'event-cluster': definition(
+    'event-cluster',
+    'phase10-event-cluster-v1',
+    '判断待聚类 Article 是否与候选 Event 指向同一个可核验事实。decision=merge 只能在主体、动作、时间和事实一致时使用；任何不同事件、证据不足或无法排除冲突都必须返回 separate。title 和 summary 只能依据给定 Article 与候选事实改写，不能补写未出现的结论；confidence 为本次判断置信度。',
+    '{"decision": "merge"|"separate", "confidence": number, "reason": string, "title": string, "summary": string}',
   ),
 };
 

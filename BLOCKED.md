@@ -1,5 +1,51 @@
 # BLOCKED
 
+## 阶段10任务0基线原始输出（2026-08-19）
+
+基线核对：
+
+```text
+git status --short --branch
+## codex/stage-09-embedding-cluster
+
+git rev-parse --short HEAD
+f5e9d33
+```
+
+工作树干净，分支和 HEAD 与任务书一致。
+
+按任务书原样运行 Worker 时，PowerShell 中 `$env='true'` 未设置 `CI`，pnpm 进入模块目录重装确认；为不擅自删除并重装现有模块选择 `n`，原始输出为：
+
+```text
+? The modules directories will be removed and reinstalled from scratch. Proceed? (Y/n)
+No
+[ERR_PNPM_ABORTED_REMOVE_MODULES_DIR] Aborted removal of modules directory
+Command failed with exit code 1: pnpm install
+```
+
+按项目既有非交互入口复核同一基线：
+
+```text
+$env:CI='true'; pnpm --filter @financehot/worker test
+tests 4 / pass 0 / fail 4 / skipped 0 / todo 0
+失败：4 个测试文件均为 Error: spawn EPERM
+退出码 1
+
+$env:CI='true'; pnpm --filter @financehot/web test
+tests 2 / pass 0 / fail 2 / skipped 0 / todo 0
+失败：2 个测试文件均为 Error: spawn EPERM
+退出码 1
+```
+
+这是默认沙箱的 Node 子进程权限错误，不是业务断言结果；按任务书保留原文并在获批沙箱外重跑。当前未修改产品代码。
+
+## 阶段10页面截图验收阻塞原始输出（2026-08-19）
+
+- 浏览器技能初始化失败：`Importing module "node:process" is not allowed in node_repl`。
+- 项目本地未提供 Playwright CLI：`'playwright' is not recognized as an internal or external command`。
+- Windows Computer Use 启动浏览器后等待授权 338 秒，原始结果：`Computer Use app approval timed out`。
+- 结论：代码/API/测试验收不受影响；1440×900 与 390×844 截图及控制台错误的真实页面验收尚未完成，未生成伪截图。
+
 ## 本轮阶段09任务0基线原始输出（2026-08-19）
 
 ```text

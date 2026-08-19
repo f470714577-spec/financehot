@@ -48,6 +48,9 @@ export interface WorkerRuntimeOptions {
   embeddingConfig?: EmbeddingConfig;
   embeddingProvider?: EmbeddingProvider;
   clusterSimilarityThreshold?: number;
+  clusterDirectMergeThreshold?: number;
+  clusterTitleFeatureThreshold?: number;
+  clusterLlmMinConfidence?: number;
   clusterTimeWindowHours?: number;
 }
 
@@ -62,6 +65,9 @@ interface RuntimeConfig {
   lockDurationMs: number;
   stalledIntervalMs: number;
   clusterSimilarityThreshold: number;
+  clusterDirectMergeThreshold: number;
+  clusterTitleFeatureThreshold: number;
+  clusterLlmMinConfidence: number;
   clusterTimeWindowHours: number;
 }
 
@@ -90,6 +96,9 @@ function runtimeConfig(options: WorkerRuntimeOptions): RuntimeConfig {
     lockDurationMs: options.lockDurationMs ?? 30_000,
     stalledIntervalMs: options.stalledIntervalMs ?? 1_000,
     clusterSimilarityThreshold: options.clusterSimilarityThreshold ?? defaults.clusterSimilarityThreshold,
+    clusterDirectMergeThreshold: options.clusterDirectMergeThreshold ?? defaults.clusterDirectMergeThreshold,
+    clusterTitleFeatureThreshold: options.clusterTitleFeatureThreshold ?? defaults.clusterTitleFeatureThreshold,
+    clusterLlmMinConfidence: options.clusterLlmMinConfidence ?? defaults.clusterLlmMinConfidence,
     clusterTimeWindowHours: options.clusterTimeWindowHours ?? defaults.clusterTimeWindowHours,
   };
 }
@@ -303,7 +312,12 @@ export class WorkerRuntime {
           db: this.db,
           now: this.now,
           similarityThreshold: this.config.clusterSimilarityThreshold,
+          directMergeThreshold: this.config.clusterDirectMergeThreshold,
+          titleFeatureThreshold: this.config.clusterTitleFeatureThreshold,
+          llmMinConfidence: this.config.clusterLlmMinConfidence,
           timeWindowHours: this.config.clusterTimeWindowHours,
+          llmConfig: this.llmConfig,
+          llmProvider: this.llmProvider,
         }, (payload as ClusterJobPayload).clusterTaskId, attemptNumber);
         logger.info(`[job_id=${jobId}] [article_id=${result.articleId}] cluster status=${result.status} event_id=${result.eventId ?? 'none'}`);
         return result;

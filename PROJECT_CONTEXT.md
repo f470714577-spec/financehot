@@ -2,11 +2,11 @@
 
 > FinanceHot 项目当前状态的短期事实源。每次阶段完成后更新，防止长对话或新会话产生架构漂移。
 > 权威基线仍是《FinanceHot DeepSeek 开发总控包 V1》+ `docs/architecture.md` + ADR。
-> 最近复验：2026-08-19；阶段 05–08 已完成本地验收，阶段 09 Embedding 与保守事件聚类已完成代码和真实受控服务验收；未推送、未部署、未上线。真实模型质量验收已移至供应商选定后的上线前验收。
+> 最近复验：2026-08-19；阶段 05–09 已完成本地验收，阶段 10 已完成多信源 Event 聚类、纠错服务、Event 优先 API/前台代码和根级门禁验收；截图验收受浏览器工具阻塞。未推送、未部署、未上线。真实模型质量验收已移至供应商选定后的上线前验收。
 
 ## 当前阶段
 
-阶段 09 —— Article Embedding、保守事件聚类与 Article↔Event 关联（受控服务验收完成；真实模型质量未验收）
+阶段 10 —— 可解释、可纠错、可展示的多信源 Event（代码与真实受控服务验收完成；截图验收阻塞；真实模型质量未验收）
 
 ## 项目目标
 
@@ -32,7 +32,7 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 
 - `apps/web` 可执行短事务 CRUD 与任务入队，**禁止在 HTTP 请求内执行 Crawler、LLM、Embedding、Event Cluster 等耗时流水线**。
 - `apps/worker` 负责持久化与工作流编排，crawler/ai 只产出 DTO，不写库。
-- 阶段 09 当前启用 `crawl`、`normalize`、`ai_process`、`embedding`、`cluster`；`score`、`daily_report` 明确拒绝。Embedding/聚类只在 Worker 异步执行，Finance Score、Heat Score、Event LLM 总结、后台和前端重构仍未实现。
+- 阶段 10 当前启用 `crawl`、`normalize`、`ai_process`、`embedding`、`cluster`；`score`、`daily_report` 明确拒绝。聚类在 Worker 异步执行：高置信候选直接合并，边界候选才调用结构化 LLM，未配置或失败保守新建；merge/split 仅提供事务化服务层，未暴露 Admin UI。Finance Score、Heat Score、后台和用户系统仍未实现。
 - LLM 配置由 `LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_MODEL`、`LLM_API_KEY` 控制；四项缺失时 Worker 仍启动并明确输出 `status=unconfigured`，不发模型请求。
 
 ## Article/Event 核心原则
@@ -67,6 +67,7 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - 阶段 07：BullMQ `crawl`/`normalize` 可靠流水线（已完成，本地验收通过）
 - 阶段 08：Article AI 处理流水线（已完成本地工程验收，根级稳定门禁已恢复；真实模型质量待上线前验收）
 - 阶段 09：Embedding、保守事件聚类与 Article↔Event 关联（已完成本地受控 HTTP Provider + 真实 PostgreSQL/Redis 验收；真实模型质量待上线前验收）
+- 阶段 10：可解释、可纠错、可展示的多信源 Event（Worker 45/45、Web 24/24；真实 PostgreSQL/Redis、结构化边界 LLM、merge/split、API 与根级 lint/build/typecheck/test 验收完成；截图验收受浏览器工具阻塞）
 
 ## 阶段 01 验证结果
 
@@ -155,6 +156,14 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - 事件关系在事务内维护：唯一主报道、`article_count`、`source_count`、`first_seen_at`、`last_seen_at`；事务级锁覆盖候选查询和写关系，重复任务、重试、重启和双 Worker 竞争不会重复调用、重复建关系或产生孤儿 Event。
 - 真实 PostgreSQL/Redis + 本地受控 HTTP Provider 已验证 9 篇样本：两个同事实多信源 Event、分类冲突/低相似不合并、失败 retrying→failed、双 Worker 竞争和重复成功幂等；Worker 全量 `40/40`。真实模型质量、成本和供应商效果仍未验收。
 
+## 阶段 10 当前结果
+
+- 候选决策同时使用时间窗口、当前 Embedding 元数据/相似度、分类、已抽取国家实体、标题特征和动作冲突保护；仅边界候选进入 `event-cluster` 结构化 LLM，响应必须经过 `JSON.parse` 与 Zod，未配置/失败均保守新建。
+- Event 成员事实由 `event_articles` 唯一关系源重算：标题、摘要、`article_count`、`source_count`、`first_seen_at`、`last_seen_at` 和唯一 primary 同事务维护；事实不足保持 `developing`/`uncertain` 语义，不自动标记 `confirmed`。
+- `mergeEvents`/`splitEvent` 通过事务级 advisory lock 保证幂等、回滚和并发一致性；split 要求明确成员集合且不得静默丢 Article。未新增 migration，现有表结构足够。
+- 首页优先展示 Event，Event 详情保留 Article 入口并展示状态、时间线、信源数量和按 `source_level`/可信度/发布时间排序的多信源报道；API 测试固定查询次数，避免 N+1。
+- 真实受控验收：Worker `45/45`、Web `24/24`、阶段10新增测试 `3/3`；反向移除候选保护和反转信源排序均真实红→绿。页面截图与 1440×900/390×844 控制台检查因 `control-in-app-browser` 工具运行时/授权阻塞，详见 `BLOCKED.md` 与 `docs/acceptance/phase-10.md`。
+
 ## 架构待办
 
 - 阶段 05：新闻查询 API、筛选、搜索与分页；已完成本地正式验收。
@@ -162,6 +171,7 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - 阶段 07：BullMQ `crawl`/`normalize` Queue + Worker 状态机（已完成本地验收；详见 `docs/acceptance/phase-07.md`）。
 - 阶段 08：LLM Provider 实现 + Structured Output + 翻译/摘要/分类/过滤（已完成本地工程验收，根级测试稳定门禁已恢复；真实模型质量在上线前验收，详见 `docs/acceptance/phase-08.md`）。
 - 阶段 09：Embedding、事件聚类与关联（已完成本地受控服务验收；详见 `docs/acceptance/phase-09.md`；真实模型质量待上线前验收）。
+- 阶段 10：多信源 Event 聚类、merge/split 与 Event 优先展示（代码与受控服务验收完成；截图验收阻塞；详见 `docs/acceptance/phase-10.md`）。
 - 阶段 16：多阶段生产 Dockerfile + 部署。
 
 ## 禁止事项

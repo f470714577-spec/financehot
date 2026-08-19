@@ -86,6 +86,8 @@ export const sourceSchema = z.object({
   id: uuid,
   name: z.string(),
   country: z.string().nullable(),
+  sourceLevel: z.enum(['A', 'B', 'C', 'D', 'E']),
+  credibilityScore: z.number().nullable(),
 });
 
 export const categorySchema = z.object({

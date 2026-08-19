@@ -2,7 +2,7 @@
 
 面向中文用户的**全球财经新闻实时聚合、过滤、事件化与 AI 分析平台**。不是门户新闻站，也不是简单 RSS 阅读器，而是 AI 驱动的全球财经情报过滤器。
 
-> 当前开发阶段：**阶段 08（Article AI 处理流水线已实现，根级测试稳定门禁已恢复）**。项目仍是 Seed 数据开发版本，不是已上线的实时财经服务；真实模型质量验收已移至供应商选定后的上线前验收。
+> 当前开发阶段：**阶段 10（多信源 Event 聚类、纠错服务和 Event 优先展示已实现）**。项目仍是 Seed 数据开发版本，不是已上线的实时财经服务；真实模型质量验收已移至供应商选定后的上线前验收。页面截图验收因浏览器工具阻塞，见 `BLOCKED.md`。
 
 当前进度与验证快照以 [`PROJECT_CONTEXT.md`](./PROJECT_CONTEXT.md) 为准。
 
@@ -118,6 +118,8 @@ pnpm --filter @financehot/worker install-sources
 - [x] 阶段 06：RSS/API/Web Adapter、安全抓取、来源表驱动 crawl-once 与 Raw/Article 幂等
 - [x] 阶段 07：BullMQ crawl/normalize 队列、常驻调度、重试、恢复、追踪与幂等
 - [x] 阶段 08：AI Provider、过滤、翻译、摘要、分类、实体抽取（本地工程验收完成；根级测试入口已串行隔离共享数据库 fixture，稳定门禁恢复；真实模型质量待上线前验收）
-- [ ] 阶段 09+：Embedding / 聚类 / 评分 / 日报 / 后台 / 部署
+- [x] 阶段 09：Embedding / 保守事件聚类 / Article↔Event 关联（本地受控服务验收完成；真实模型质量待上线前验收）
+- [x] 阶段 10：多信源 Event 候选保护 / 结构化边界判断 / merge-split / Event 优先展示（代码与受控服务验收完成；截图验收阻塞）
+- [ ] 阶段 11+：评分 / 日报 / 后台 / 用户系统 / 部署
 
-> 尚未实现：Embedding、Event Cluster、Finance/Heat Score、后台业务、用户系统。AI 调用链已完成本地受控 Provider 工程验收，但尚未使用真实模型做质量验收；请勿把本地 Seed/诊断入口误解为生产服务。
+> 尚未实现：Finance/Heat Score、日报、后台业务、用户系统和部署。AI/边界聚类均只做本地受控 Provider 工程验收，尚未使用真实模型做质量验收；请勿把本地 Seed/诊断入口误解为生产服务。

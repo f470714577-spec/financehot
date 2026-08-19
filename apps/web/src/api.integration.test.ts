@@ -21,8 +21,8 @@ type Envelope<T> = {
 };
 
 type List<T> = { items: T[]; nextCursor: string | null; hasMore: boolean };
-type News = { id: string; title: string; event: { id: string } | null; market: string; score: number };
-type Event = { id: string; title: string; articles: News[] };
+type News = { id: string; title: string; publishedAt: string | null; source: { id: string; sourceLevel: string; credibilityScore: number | null }; event: { id: string } | null; market: string; score: number };
+type Event = { id: string; title: string; status: string; articleCount: number; sourceCount: number; articles: News[] };
 type Topic = { id: string; slug: string; name: string };
 
 async function read<T>(response: Response): Promise<Envelope<T>> {
@@ -42,14 +42,14 @@ async function list<T>(handler: (request: Request) => Promise<Response>, path: s
   return body.data!;
 }
 
-describe('阶段 05 PostgreSQL Route Handler 集成测试', () => {
+describe('阶段 10 Event API PostgreSQL 集成测试', () => {
   let testHotEventId = '';
 
   before(async () => {
     assert.ok(process.env.DATABASE_URL || 'postgresql://financehot:financehot@localhost:5433/financehot');
     const now = new Date();
-    const supportingArticles = (await getDb().pool.query<{ articleId: string }>(`
-      SELECT ea.article_id AS "articleId"
+    const supportingArticles = (await getDb().pool.query<{ articleId: string; sourceId: string }>(`
+      SELECT ea.article_id AS "articleId", a.source_id AS "sourceId"
       FROM event_articles ea
       INNER JOIN articles a ON a.id = ea.article_id
       WHERE a.is_hidden = false
@@ -63,13 +63,13 @@ describe('阶段 05 PostgreSQL Route Handler 集成测试', () => {
       ) VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8)
       RETURNING id
     `, [
-      `阶段08测试热点-${now.getTime()}`,
-      '仅供阶段08 Web 集成测试使用的当前时间热点。',
+      `阶段10测试热点-${now.getTime()}`,
+      '仅供阶段10 Web 集成测试使用的多信源事件。',
       99,
       99,
       now,
       supportingArticles.length,
-      1,
+      new Set(supportingArticles.map((row) => row.sourceId)).size,
       'developing',
     ]);
     testHotEventId = inserted.rows[0]?.id ?? '';
@@ -171,13 +171,23 @@ describe('阶段 05 PostgreSQL Route Handler 集成测试', () => {
     assert.ok(data.items.length > 0);
   });
 
-  test('事件详情批量返回多信源和时间线，不发生逐 Article N+1', async () => {
-    const event = (await list<{ id: string }>(getEvents, '/events?limit=1')).items[0];
+  test('事件详情批量返回多信源、计数、状态且按信源质量排序，不发生逐 Article N+1', async () => {
     resetQueryCount();
-    const response = await getEventDetail(request(`/events/${event.id}`), { params: Promise.resolve({ id: event.id }) });
+    const response = await getEventDetail(request(`/events/${testHotEventId}`), { params: Promise.resolve({ id: testHotEventId }) });
     const body = await read<Event>(response);
     assert.equal(response.status, 200);
-    assert.ok(body.data && body.data.articles.length > 3);
+    assert.ok(body.data);
+    assert.equal(body.data!.status, 'developing');
+    assert.equal(body.data!.articleCount, body.data!.articles.length);
+    assert.equal(body.data!.sourceCount, new Set(body.data!.articles.map((article) => article.source.id)).size);
+    const rank = (level: string) => ({ A: 0, B: 1, C: 2, D: 3, E: 4 }[level] ?? 5);
+    for (let index = 1; index < body.data!.articles.length; index += 1) {
+      const previous = body.data!.articles[index - 1]!;
+      const current = body.data!.articles[index]!;
+      assert.ok(rank(previous.source.sourceLevel) < rank(current.source.sourceLevel)
+        || (rank(previous.source.sourceLevel) === rank(current.source.sourceLevel)
+          && (previous.source.credibilityScore ?? -1) >= (current.source.credibilityScore ?? -1)));
+    }
     assert.ok(getQueryCount() <= 3);
   });
 
