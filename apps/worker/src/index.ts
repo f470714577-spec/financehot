@@ -1,18 +1,34 @@
 import { loadEnv } from './config/env';
 import { logger } from './logger';
+import { createDb } from '@financehot/db';
+import { createWorkerRuntime } from './queue/runtime';
 
 async function main() {
   const env = loadEnv();
+  const databaseUrl = env.DATABASE_URL ?? 'postgresql://financehot:financehot@localhost:5433/financehot';
+  const redisUrl = env.REDIS_URL ?? 'redis://localhost:6379';
+  const connection = createDb(databaseUrl);
+  const runtime = createWorkerRuntime({ db: connection.db, redisUrl });
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info(`收到 ${signal}，停止接收新任务并等待在途任务`);
+    runtime.stopAccepting();
+    await runtime.close();
+    await connection.pool.end();
+    logger.info('Worker graceful shutdown completed');
+  };
+  process.once('SIGINT', () => void shutdown('SIGINT').then(() => process.exit(0)));
+  process.once('SIGTERM', () => void shutdown('SIGTERM').then(() => process.exit(0)));
   logger.info('FinanceHot Worker started');
   logger.info(`NODE_ENV=${env.NODE_ENV ?? 'development'}`);
-  logger.info(`REDIS_URL=${env.REDIS_URL ? 'configured' : 'not configured'}`);
-  logger.info(`DATABASE_URL=${env.DATABASE_URL ? 'configured' : 'not configured'}`);
-  logger.info('Worker idle (阶段 01：无流水线 job，进程保持存活)');
-
-  // 阶段 01 保持进程存活；阶段 07 接入 BullMQ 消费循环后移除
-  setInterval(() => {
-    // no-op keepalive
-  }, 60_000);
+  logger.info(`REDIS_URL=${env.REDIS_URL ? 'configured' : 'default localhost'}`);
+  logger.info(`DATABASE_URL=${env.DATABASE_URL ? 'configured' : 'default localhost'}`);
+  logger.info(`LLM_PROVIDER=${runtime.llmConfig.provider ?? 'unconfigured'} model=${runtime.llmConfig.model ?? 'unconfigured'} status=${runtime.llmProvider.name === 'unconfigured' ? 'unconfigured' : 'configured'}`);
+  logger.info(`EMBEDDING_PROVIDER=${runtime.embeddingConfig.provider ?? 'unconfigured'} model=${runtime.embeddingConfig.model ?? 'unconfigured'} status=${runtime.embeddingProvider.name === 'unconfigured' ? 'unconfigured' : 'configured'} version=${runtime.embeddingConfig.embeddingVersion}`);
+  await runtime.start();
+  logger.info(`Worker queues started: crawl, normalize, ai_process, embedding, cluster; concurrency=${runtime.config.concurrency}`);
 }
 
 main().catch((err) => {

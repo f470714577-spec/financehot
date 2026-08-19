@@ -4,6 +4,7 @@ export class AppError extends Error {
     message: string,
     public readonly code = 'INTERNAL_ERROR',
     public readonly status = 500,
+    public readonly details?: unknown,
   ) {
     super(message);
     this.name = 'AppError';

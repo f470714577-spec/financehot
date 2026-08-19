@@ -2,22 +2,23 @@
 
 面向中文用户的**全球财经新闻实时聚合、过滤、事件化与 AI 分析平台**。不是门户新闻站，也不是简单 RSS 阅读器，而是 AI 驱动的全球财经情报过滤器。
 
-> 当前开发阶段：**阶段 02（数据库 Schema / Migration / Seed）**。核心业务（采集 / AI / 去重 / 聚类 / 评分）尚未实现。
+> 当前开发阶段：**阶段 10（多信源 Event 聚类、纠错服务和 Event 优先展示已实现）**。项目仍是 Seed 数据开发版本，不是已上线的实时财经服务；真实模型质量验收已移至供应商选定后的上线前验收。页面截图验收因浏览器工具阻塞，见 `BLOCKED.md`。
+
+当前进度与验证快照以 [`PROJECT_CONTEXT.md`](./PROJECT_CONTEXT.md) 为准。
 
 ## Monorepo 结构
 
 ```
 financehot/
 ├── apps/
-│   ├── web/            # Next.js 前台 + 后台 /admin + API
-│   └── worker/         # 独立后台 Worker（BullMQ 消费者，流程编排）
+│   ├── web/            # Next.js 前台与业务 API；后台 /admin 尚待后续阶段
+│   └── worker/         # 独立后台 Worker；消费 crawl/normalize/ai_process 队列
 ├── packages/
 │   ├── shared/         # 基础公共层（类型/常量/工具/zod DTO/错误）
 │   ├── db/             # Drizzle schema、client、migration
-│   ├── ai/             # LLMProvider/EmbeddingProvider 接口
-│   ├── crawler/        # SourceAdapter 接口 + 采集实现
+│   ├── ai/             # 可替换 LLMProvider、五步 Structured Output 与 usage
+│   ├── crawler/        # RSS/API/Web Adapter、SafeFetcher、robots 与 DTO 产出
 │   └── ui/             # Design Token + 基础组件
-├── prompts/            # 核心 Prompt 模板
 ├── scripts/            # 运维脚本
 ├── docker/             # Dockerfile + 初始化脚本
 └── docs/               # 架构文档 + ADR
@@ -26,13 +27,14 @@ financehot/
 ## 环境要求
 
 - Node.js >= 22
-- pnpm >= 9（推荐通过 `npm install -g pnpm` 安装）
+- pnpm 11.21.0（由根目录 `packageManager` 锁定，推荐使用 Corepack）
 - PostgreSQL 16 + pgvector（见下方 Docker）
 - Redis 7
 
 ## 安装
 
 ```bash
+corepack enable
 pnpm install
 ```
 
@@ -44,7 +46,7 @@ pnpm install
 cp .env.example .env
 ```
 
-关键变量：`DATABASE_URL`、`REDIS_URL`、`APP_URL`、`LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`EMBEDDING_PROVIDER`、`EMBEDDING_MODEL`。**真实密钥绝不写入 `.env` 以外且不入库。**
+关键变量：`DATABASE_URL`、`REDIS_URL`、`APP_URL`、`LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_TIMEOUT_MS`、`LLM_MAX_RETRIES`。**真实密钥绝不写入 `.env` 以外且不入库；价格未知时成本留空。**
 
 ## Docker 启动（PostgreSQL + Redis）
 
@@ -72,9 +74,13 @@ pnpm --filter @financehot/web dev
 ### Worker
 
 ```bash
+pnpm --filter @financehot/worker install-sources
 pnpm --filter @financehot/worker start
-# 应输出 "FinanceHot Worker started"
+pnpm --filter @financehot/worker crawl-once
+# start 启动 BullMQ 常驻调度；crawl-once 是“入队并等待本轮排空”的诊断入口
 ```
+
+Worker 启动 `crawl`、`normalize`、`ai_process` handler；`embedding`、`cluster`、`score`、`daily_report` 仍明确拒绝投递。normalize 产生新 Article 后，AI 任务按过滤→翻译→摘要→分类→实体抽取顺序异步执行；重复成功任务按缓存键命中，不再次调用模型。默认队列前缀、并发、attempts、指数退避和完成/失败记录保留时长由 `.env` 中的 `FINANCEHOT_*` 变量集中配置。
 
 ### Redis PING 测试（可选）
 
@@ -88,15 +94,32 @@ pnpm --filter @financehot/worker ping:redis
 pnpm build       # 构建
 pnpm lint        # 代码检查
 pnpm typecheck   # 类型检查
-pnpm test        # 测试（当前各包暂无测试，安全执行并明确结果）
+pnpm test        # 测试；需先 migrate，Worker 含真实 Redis/PostgreSQL 集成测试
 ```
+
+阶段 06 首次接手时先执行：
+
+```bash
+pnpm --filter @financehot/db db:migrate
+pnpm --filter @financehot/db db:seed
+pnpm --filter @financehot/worker install-sources
+```
+
+采集只保存来源允许的元数据和摘要/摘录，不全文转载版权新闻；API 密钥只引用环境变量名，不写入 `sources.adapter_config`。
 
 ## 目前开发阶段
 
 - [x] 阶段 00：架构冻结
 - [x] 阶段 01：基础工程与开发环境
 - [x] 阶段 02：数据库 Schema / Migration / Seed
-- [ ] 阶段 03：UI 设计系统与整体框架
-- [ ] 阶段 04+：核心页面 / API / 采集 / AI / 去重 / 聚类 / 评分 / 日报 / 后台 / 部署
+- [x] 阶段 03：UI 设计系统与整体框架
+- [x] 阶段 04：核心前台页面（Seed 数据版）
+- [x] 阶段 05：新闻 API / 筛选 / 搜索 / 分页
+- [x] 阶段 06：RSS/API/Web Adapter、安全抓取、来源表驱动 crawl-once 与 Raw/Article 幂等
+- [x] 阶段 07：BullMQ crawl/normalize 队列、常驻调度、重试、恢复、追踪与幂等
+- [x] 阶段 08：AI Provider、过滤、翻译、摘要、分类、实体抽取（本地工程验收完成；根级测试入口已串行隔离共享数据库 fixture，稳定门禁恢复；真实模型质量待上线前验收）
+- [x] 阶段 09：Embedding / 保守事件聚类 / Article↔Event 关联（本地受控服务验收完成；真实模型质量待上线前验收）
+- [x] 阶段 10：多信源 Event 候选保护 / 结构化边界判断 / merge-split / Event 优先展示（代码与受控服务验收完成；截图验收阻塞）
+- [ ] 阶段 11+：评分 / 日报 / 后台 / 用户系统 / 部署
 
-> 尚未实现：新闻爬取、AI 调用、去重、Embedding、Event Cluster、Finance/Heat Score、后台业务、用户系统。请勿按已完成的业务功能理解本项目。
+> 尚未实现：Finance/Heat Score、日报、后台业务、用户系统和部署。AI/边界聚类均只做本地受控 Provider 工程验收，尚未使用真实模型做质量验收；请勿把本地 Seed/诊断入口误解为生产服务。

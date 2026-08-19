@@ -11,12 +11,16 @@
     "build": "tsc --noEmit",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "node -e \"console.log('[@financehot/crawler] no tests yet')\""
+    "test": "tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
-    "@financehot/shared": "workspace:*"
+    "@financehot/shared": "workspace:*",
+    "cheerio": "^1.0.0",
+    "fast-xml-parser": "^5.2.5"
   },
   "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
 }

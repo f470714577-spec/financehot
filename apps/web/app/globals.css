@@ -3,11 +3,65 @@
 @tailwind utilities;
 
 :root {
-  --background: #f7f8fa;
-  --foreground: #0a0a0a;
+  color-scheme: light;
+  --canvas: 244 246 248;
+  --surface: 255 255 255;
+  --surface-muted: 233 237 242;
+  --ink: 17 24 32;
+  --ink-muted: 96 112 128;
+  --line: 215 222 230;
+  --signal-blue: 23 105 224;
+  --signal-cyan: 0 167 167;
+  --signal-amber: 216 137 9;
+  --market-up: 217 45 32;
+  --market-down: 22 135 90;
+}
+
+.dark {
+  color-scheme: dark;
+  --canvas: 9 16 23;
+  --surface: 17 26 35;
+  --surface-muted: 23 36 49;
+  --ink: 242 246 248;
+  --ink-muted: 147 164 181;
+  --line: 37 53 67;
+}
+
+* {
+  border-color: rgb(var(--line));
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+html {
+  background: rgb(var(--canvas));
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  min-height: 100vh;
+  background: rgb(var(--canvas));
+  color: rgb(var(--ink));
+  font-family: Inter, "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgb(var(--signal-blue) / 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

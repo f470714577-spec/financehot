@@ -79,6 +79,7 @@ export const AI_TASK_TYPE = [
   'summarize',
   'classify',
   'entity-extraction',
+  'embedding',
   'finance-score',
   'market-impact',
   'event-cluster',

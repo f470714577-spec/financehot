@@ -66,6 +66,7 @@ export const event_articles = pgTable(
       .where(sql`${t.is_primary} = true`),
     index('event_articles_event_id_idx').on(t.event_id),
     index('event_articles_article_id_idx').on(t.article_id),
+    index('event_articles_article_event_idx').on(t.article_id, t.event_id),
   ],
 );
 

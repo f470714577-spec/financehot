@@ -14,9 +14,17 @@
     "test": "node -e \"console.log('[@financehot/ui] no tests yet')\""
   },
   "dependencies": {
-    "@financehot/shared": "workspace:*"
+    "@financehot/shared": "workspace:*",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.469.0",
+    "tailwind-merge": "^2.6.0"
+  },
+  "peerDependencies": {
+    "react": ">=19"
   },
   "devDependencies": {
+    "@types/react": "^19.0.2",
+    "react": "^19.0.0",
     "typescript": "^5.7.2"
   }
 }

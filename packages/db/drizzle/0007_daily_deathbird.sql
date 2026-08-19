@@ -1,0 +1,1 @@
+ALTER TABLE "article_embeddings" ALTER COLUMN "dimensions" SET NOT NULL;

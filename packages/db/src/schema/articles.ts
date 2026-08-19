@@ -9,6 +9,7 @@ import {
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { desc, sql } from 'drizzle-orm';
 import { sources } from './sources';
 import {
   timestamps,
@@ -57,6 +58,9 @@ export const articles = pgTable(
     index('articles_processing_status_idx').on(t.processing_status),
     index('articles_content_hash_idx').on(t.content_hash),
     index('articles_title_hash_idx').on(t.title_hash),
+    index('articles_visible_published_id_idx')
+      .on(desc(t.published_at), desc(t.id))
+      .where(sql`${t.is_hidden} = false`),
   ],
 );
 
@@ -101,7 +105,7 @@ export const article_embeddings = pgTable(
       .references(() => articles.id),
     provider: text('provider').notNull(),
     model: text('model').notNull(),
-    dimensions: integer('dimensions'),
+    dimensions: integer('dimensions').notNull(),
     embedding: vector('embedding').notNull(),
     input_hash: text('input_hash').notNull(),
     embedding_version: text('embedding_version').notNull(),
