@@ -1,5 +1,38 @@
 # PROGRESS
 
+## 阶段09开工回执（2026-08-19）
+- 目标：把阶段08合格财经 Article 生成可追溯 Embedding，并保守、幂等归入或创建 Event。
+- 分支：`codex/stage-09-embedding-cluster`；基线 `codex/stage-08-ai-pipeline`，外部复核根 test `7/7 successful`。
+- 顺序：EmbeddingProvider 红→绿 → 真实 `embedding→cluster` 队列/事务/并发幂等 → migration/文档 → 串行总门禁/本地提交。
+- 硬约束：只处理非隐藏且阶段08完成 Article；只启用 `embedding`、`cluster`，拒绝 `score`、`daily_report`；不接真实供应商、不改 Seed/旧 migration/Web。
+- 最大风险：混合维度向量下的保守事件关系与双 Worker 竞争必须同时保持可追溯、无孤儿、无重复调用。
+- 环境：默认沙箱曾报 Docker named pipe/`spawn EPERM`，外部路径已验证 PostgreSQL/Redis healthy；未改产品代码。
+
+## 阶段09任务1完成：EmbeddingProvider（2026-08-19）
+- 独立实现 OpenAI-compatible `/embeddings` Provider；配置不全返回 `unconfigured` 且零请求，未接真实供应商/真实 Key。
+- 固定校验：非空有限数向量、dimensions 一致；空数组、NaN、Infinity、非法响应不得入库。
+- 错误分类：401/403 不重试；429/5xx、timeout/network 仅有限重试；非法响应不重试。
+- 红→绿：先补测试运行 `CI=true pnpm --filter @financehot/ai test`，旧实现因缺少 `EmbeddingProviderError` 导出退出 1；实现后同命令 `tests 17 / pass 17 / fail 0 / skip 0 / todo 0`。
+- 任务1完成；AI 包 typecheck 已通过，测试数由基线 10 增至 17。
+
+## 阶段09任务2完成：真实队列、持久化与事件关联（2026-08-19）
+- 已接通 `ai_process 成功 → embedding → cluster`；仅消费 `embedding`、`cluster` 两类新增队列，`score`、`daily_report` 明确拒绝。
+- 仅处理非隐藏且 `entity_extracted` Article；输入固定为规范化 `title_zh + "\\n" + summary_zh`，记录 input_hash/provider/model/dimensions/embedding_version。
+- 真实 PostgreSQL/Redis 受控 HTTP 验收：9 篇样本、两个同事实双信源 Event、同公司不同事实分类冲突不合并、同分类低相似不合并、72 小时窗/向量元数据/唯一主报道/Event 计数与时间、失败两次后 failed、双 Worker 竞争 Provider 新调用 1 次、重复成功新增调用/向量/关系均为 0；集成 `tests 1 / pass 1 / fail 0 / skip 0 / todo 0`。
+- 真实 Worker 全量恢复绿测：`CI=true pnpm --filter @financehot/worker test` 为 `tests 40 / pass 40 / fail 0 / skipped 0 / todo 0`，高于基线 39。
+- 反向红→绿：临时默认阈值 `0.0` 后同命令 `tests 40 / pass 39 / fail 1`，失败明确为 LOW_SIM 与 A Event 误合并；已立即恢复 `0.86`，复跑为 `40/40`。
+- 任务2完成；双 Worker 聚类事务使用事务级 advisory lock，关系、主报道与 Event 派生计数同事务维护，无孤儿 Event。
+
+## 阶段09任务3完成：migration、文档与总门禁（2026-08-19）
+- 新增唯一向前 migration `packages/db/drizzle/0007_daily_deathbird.sql`，仅将 `article_embeddings.dimensions` 设为 `NOT NULL`；旧 migration/meta snapshot 未改，journal 已追加 idx7。
+- 真实迁移命令 `$env:CI='true'; pnpm --filter @financehot/db db:migrate` 输出 `[✓] migrations applied successfully!`。
+- 只读数据库核对：pgvector 扩展为 `vector`；`article_embeddings.dimensions` 为 `is_nullable=NO`；索引含 `article_embeddings_unique`；唯一约束含 `article_embeddings_unique`。
+- 已更新 `PROJECT_CONTEXT.md`、`docs/architecture.md`、`docs/ADR-002.md`、`docs/acceptance/phase-09.md`、`BLOCKED.md`；真实模型质量仍明确未验收。
+- 新增代码范围的 Worker/AI/DB lint 与 typecheck 已通过。
+- 总门禁第1轮按顺序在 root test 失败：DB `4` 项为 `3 pass / 1 fail`，Seed Event 观察到 `45` 而期望 `12`；根因是此前中断的阶段09受控夹具残留，不是业务断言回归。已只读定位并精确清理 10 个 stage09 source、45 个 Article、33 个孤儿 Event、90 个 AI task，未清库/改 Seed；复核 Seed Event 恢复为 `12`。按规则第1轮终止，待重新执行。
+- 总门禁第2轮严格按顺序执行：`lint`、`build`、`typecheck`、`test` 均 Turbo `7 successful / 7 total`、0 cached、退出 0；最后 `git diff --check` 退出 0。根 test 使用 `--concurrency=1`，未改 Seed、旧 migration、Web 或系统时间。
+- 阶段09本地提交已创建，当前分支工作树干净；不 push、不 deploy，提交哈希以 `git log -1` 为准。
+
 ## 阶段08根级测试隔离收口（2026-08-19）
 - 根因确认：workspace 测试默认由 Turbo 并行执行，`apps/web` 的当前时间 Event fixture 与 `packages/db` 的 Seed 精确计数共享同一 PostgreSQL 实例，产生 `events=13` 竞争失败。
 - 最小修复：根 `package.json` 的 `test` 脚本固定为 `turbo run test --concurrency=1`，以 workspace 包串行化隔离共享数据库测试；未改 Seed、生产查询、数据库时钟或 migration。

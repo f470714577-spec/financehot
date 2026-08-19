@@ -30,7 +30,9 @@ import {
 import { and, eq, inArray, or } from 'drizzle-orm';
 import type { ZodType } from 'zod';
 import { getPrompt, type AiPromptTask, type PromptArticle } from '../../../prompts';
-import type { AiProcessJobPayload } from '@financehot/shared';
+import type { AiProcessJobPayload, EmbeddingJobPayload } from '@financehot/shared';
+import { enqueueEmbeddingTask } from './embedding-pipeline';
+import type { EmbeddingConfig } from '@financehot/ai';
 
 type WorkerDb = Db['db'];
 type WorkerTransaction = Parameters<WorkerDb['transaction']>[0] extends (tx: infer Tx) => Promise<unknown> ? Tx : never;
@@ -49,6 +51,8 @@ export interface AiPipelineOptions {
   config?: LLMConfig;
   now?: () => Date;
   enqueue: (payload: AiProcessJobPayload, jobId: string) => Promise<void>;
+  embeddingConfig?: EmbeddingConfig;
+  enqueueEmbedding?: (payload: EmbeddingJobPayload, jobId: string) => Promise<void>;
 }
 
 export interface AiTaskHandle {
@@ -376,6 +380,8 @@ export async function processAiTask(
       await enqueueAiTask(options.db, initial.article_id, 'classify', options.enqueue, config);
     } else if (taskType === 'classify') {
       await enqueueAiTask(options.db, initial.article_id, 'entity-extraction', options.enqueue, config);
+    } else if (taskType === 'entity-extraction' && options.enqueueEmbedding) {
+      await enqueueEmbeddingTask(options.db, initial.article_id, options.enqueueEmbedding, options.embeddingConfig);
     }
     return { status: 'processed', taskType, articleId: initial.article_id, usageRecorded: true };
   } catch (error) {

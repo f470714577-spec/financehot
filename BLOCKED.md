@@ -4,6 +4,25 @@
 
 当前阻塞：无。根级测试的跨包共享数据库 fixture 竞争已通过根测试入口串行化修复，并连续 3 次取得 `7/7 successful`；以下条目保留原始红叉和历史边界证据。真实模型质量验收按领导决定移至供应商选定后的上线前验收，本阶段不调用真实 Key、不购买额度、不伪造质量或成本结论。
 
+## 阶段09总门禁第1轮原始红叉（2026-08-19）
+
+第1轮按规定顺序执行到根 `test` 时，DB Seed 精确计数失败；不是阶段09业务断言失败，而是此前被强制中断的阶段09受控集成夹具遗留。原始关键输出：
+
+```text
+@financehot/db:test: tests 4
+@financehot/db:test: pass 3
+@financehot/db:test: fail 1
+@financehot/db:test: AssertionError [ERR_ASSERTION]: events=45，期望 = 12
+Tasks: 3 successful, 7 total
+Failed: @financehot/db#test
+```
+
+只读定位确认遗留为 10 个 `stage09-it-*` source、45 个 `https://controlled.example/stage09/*` Article、33 个标题为“阶段09 …”的孤儿 Event、90 个相关 AI task；无 Raw Article、无生产 Event 关系。已按上述精确前缀/标题在单事务内删除本轮测试残留，未清库、未改 Seed、未删除其他数据；事务后复核 `stage09_sources=0`、`stage09_articles=0`、`stage09_events=0`、`seed_events=12`。后续总门禁需重新执行。
+
+## 阶段09当前结论（2026-08-19）
+
+当前阻塞：无。阶段09的本地受控 HTTP Provider、真实 PostgreSQL/Redis 队列、迁移、保守聚类和双 Worker 幂等已验证；实际红→绿输出见 `PROGRESS.md` 与 `docs/acceptance/phase-09.md`。真实供应商质量、成本和生产阈值适配未验收，不得将受控 Provider 结果冒充真实模型质量。未请求或写入真实密钥。
+
 ## 阶段08根级测试隔离已收口（2026-08-19）
 
 - 根 `package.json` 的 `test` 固定使用 `turbo run test --concurrency=1`，避免 Web、DB、Worker 测试进程同时写读共享 PostgreSQL。

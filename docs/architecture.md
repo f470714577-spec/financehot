@@ -1,7 +1,7 @@
 # FinanceHot 架构设计（阶段 00.1 修订版）
 
 > 版本 V1.1 · 2026-08-13 · 依据《FinanceHot DeepSeek 开发总控包 V1》+ 阶段 00.1 修订指令
-> 状态：阶段 00.1 已通过并作为当前架构基线；实现进度以 `../PROJECT_CONTEXT.md` 为准
+> 状态：阶段 00.1 已通过并作为当前架构基线；阶段 09 的 Embedding/事件聚类已按本文件约束实现；实现进度以 `../PROJECT_CONTEXT.md` 为准
 
 ## 0. 初始仓库勘察记录（历史）
 
@@ -158,7 +158,7 @@ sources 1 ── N raw_articles 0..1 ── 1 articles N ── N sources
 
 - 主键 `id`；**唯一约束 `(article_id, provider, model, input_hash, embedding_version)`**
 - 字段：article_id(FK), provider, model, dimensions, embedding(vector), input_hash, embedding_version, created_at, updated_at
-- 索引：article_id；HNSW/IVFFlat 向量索引（阶段 09 定）
+- 索引：article_id；阶段 09 使用 pgvector 精确 cosine 查询，不建立 HNSW/IVFFlat（现表允许混合 dimensions，待统一向量维度后再评估 ANN 索引）
 - 用途：判断"哪个 Provider/Model 生成、向量维度、基于哪一版输入"；`input_hash` 变化即需重新生成；唯一约束保证同一版本不重复生成
 - **MVP 不强制 Event 级 Embedding**（后续可扩展 `event_embeddings`，结构与 article_embeddings 对称）
 
@@ -205,7 +205,7 @@ sources 1 ── N raw_articles 0..1 ── 1 articles N ── N sources
 
 **ai_tasks**（细粒度 AI 任务状态）
 
-- 主键 `id`；阶段 08 增加 `cache_key`、`result_json`；缓存键包含 article、task_type、input_hash、prompt_version、provider、model，并设置唯一约束。字段：task_type(financial-filter/translate/summarize/classify/entity-extraction/finance-score/market-impact/event-cluster/daily-report), article_id(FK 可空), event_id(FK 可空), status(pending/running/success/failed/retrying), prompt_version, model, provider, input_hash, error, retry_count, created_at, updated_at。Article 删除时其 AI 任务和调用用量记录级联删除，避免生命周期清理留下孤儿 AI 记录。
+- 主键 `id`；阶段 08 增加 `cache_key`、`result_json`，阶段 09 使用同一任务表追踪 `embedding` 与 `event-cluster`；缓存键包含 article、task_type、input_hash、prompt_version、provider、model，并设置唯一约束。字段：task_type(financial-filter/translate/summarize/classify/entity-extraction/embedding/finance-score/market-impact/event-cluster/daily-report), article_id(FK 可空), event_id(FK 可空), status(pending/running/success/failed/retrying), prompt_version, model, provider, input_hash, error, retry_count, created_at, updated_at。Article 删除时其 AI 任务和调用用量记录级联删除，避免生命周期清理留下孤儿 AI 记录。
 - 索引：status、article_id、task_type
 - **不承担 Pipeline 粗粒度状态**——粗粒度由 `articles.processing_status` 表达
 
@@ -269,13 +269,15 @@ POST   /api/admin/events/:id/split
 
 ### 6.1 Queue（BullMQ）
 
-队列契约固定为 `crawl / normalize / ai_process / embedding / cluster / score / daily_report`。阶段 08 已真实接入 `ai_process` handler；当前 Worker 只启动 `crawl`、`normalize`、`ai_process`，其余名称只冻结版本化载荷契约，投递时明确拒绝，不启动消费者、不做成功占位。
+队列契约固定为 `crawl / normalize / ai_process / embedding / cluster / score / daily_report`。阶段 09 已真实接入 `embedding`、`cluster` handler；当前 Worker 启动 `crawl`、`normalize`、`ai_process`、`embedding`、`cluster`，`score`、`daily_report` 只冻结版本化载荷契约，投递时明确拒绝，不启动消费者、不做成功占位。
 
 阶段 07 的实际链路是：Worker 启动后按 `sources.crawl_interval` 计算到期 slot，把 source 投递到 `crawl`；`crawl` 使用 SafeFetcher/SourceAdapter，先以 `pending` 保存 Raw，再投递 `normalize`；`normalize` 复用三键去重并更新 Raw/Article。`crawl-once` 只负责入队并等待队列排空，不保留同步业务旁路。
 
 阶段 08 在 `normalize` 创建新 Article 后，以确定性缓存键创建 `financial-filter`，成功后按 `translate → summarize → classify → entity-extraction` 顺序继续投递。非财经 Article 保留原文、设为 `filtered_out` 并隐藏；成功任务不会再次调用 Provider，Provider/模型/Prompt 版本、结构化结果和 usage 均可追踪。
 
-运行配置集中在 `apps/worker/src/config/worker-config.ts`：默认队列前缀 `financehot:stage07`、并发 `2`、attempts `3`、指数退避初始 `1000ms`、完成/失败各保留 `100` 条；可由 `.env` 的 `FINANCEHOT_*` 覆盖。每个 source 使用确定性 job ID 和 Redis 分布式锁，数据库唯一约束是最终防线。
+阶段 09 只接收非隐藏且 `entity_extracted` 的 Article。Embedding 输入是规范化 `title_zh + "\\n" + summary_zh`，成功后写入 `article_embeddings` 并投递 `cluster`；聚类只在 provider/model/version/dimensions 相同、72 小时内、分类兼容且 cosine ≥ 0.86 时合并，否则创建 Event。候选查询、`event_articles` 关系、唯一主报道和 Event 派生计数在同一事务内完成；重复任务通过任务缓存和数据库唯一约束短路。
+
+运行配置集中在 `apps/worker/src/config/worker-config.ts`：默认队列前缀 `financehot:stage09`、并发 `2`、attempts `3`、指数退避初始 `1000ms`、完成/失败各保留 `100` 条；Embedding 配置与聚类阈值/时间窗可由 `.env` 覆盖。每个 source 使用确定性 job ID 和 Redis 分布式锁，数据库唯一约束是最终防线。
 
 ### 6.2 Article Pipeline 状态机（粗粒度，`articles.processing_status`）
 
@@ -319,7 +321,7 @@ PUBLISHED
 
 - `articles.processing_status`：**粗粒度** Pipeline 状态（上表）。
 - `ai_tasks.status` / `crawl_tasks.status`：**细粒度**任务状态（pending/running/success/failed/retrying + retry_count + error）。
-- 阶段 08 的 `ai_process` 只执行过滤、翻译、摘要、分类、实体抽取；非财经 Article 设为 `filtered_out` 并 `is_hidden=true`，原始字段不覆盖；阶段 09 才处理 Embedding/聚类。
+- 阶段 08 的 `ai_process` 只执行过滤、翻译、摘要、分类、实体抽取；非财经 Article 设为 `filtered_out` 并 `is_hidden=true`，原始字段不覆盖。阶段 09 的 `embedding`/`cluster` 只处理 `entity_extracted` 且可见 Article，并将成功状态推进为 `embedded`/`clustered`。
 - **不**让单个 processing_status 承载所有重试与错误信息。
 
 ### 6.3 失败与重试语义（BullMQ）

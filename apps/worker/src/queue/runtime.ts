@@ -3,7 +3,7 @@ import Redis from 'ioredis';
 import { and, eq, or } from 'drizzle-orm';
 
 import { SafeFetcher } from '@financehot/crawler';
-import { createLLMProvider, loadLLMConfig, type LLMConfig, type LLMProvider } from '@financehot/ai';
+import { createEmbeddingProvider, createLLMProvider, loadEmbeddingConfig, loadLLMConfig, type EmbeddingConfig, type EmbeddingProvider, type LLMConfig, type LLMProvider } from '@financehot/ai';
 import { ai_tasks, type Db, crawl_tasks, sources } from '@financehot/db';
 import {
   IMPLEMENTED_JOB_NAMES,
@@ -11,10 +11,11 @@ import {
   jobNameSchema,
   parseJobPayload,
   type CrawlJobPayload,
+  type ClusterJobPayload,
   type AiProcessJobPayload,
+  type EmbeddingJobPayload,
   type ImplementedJobName,
   type JobName,
-  type JobPayload,
   type NormalizeJobPayload,
 } from '@financehot/shared';
 
@@ -24,6 +25,8 @@ import { crawlJobId, normalizeJobId, scheduledSlot, unsupportedJobMessage } from
 import { dueSources, errorDetails, crawlSource, emptyMetrics, normalizeRawRows, type PipelineMetrics } from './pipeline';
 import { SourceLock } from './source-lock';
 import { aiErrorDetails, enqueueAiTask, processAiTask } from '../ai-pipeline';
+import { embeddingTaskError, processEmbeddingTask } from '../embedding-pipeline';
+import { clusterTaskError, processClusterTask } from '../cluster-pipeline';
 
 type WorkerDb = Db['db'];
 
@@ -42,6 +45,10 @@ export interface WorkerRuntimeOptions {
   stalledIntervalMs?: number;
   llmConfig?: LLMConfig;
   llmProvider?: LLMProvider;
+  embeddingConfig?: EmbeddingConfig;
+  embeddingProvider?: EmbeddingProvider;
+  clusterSimilarityThreshold?: number;
+  clusterTimeWindowHours?: number;
 }
 
 interface RuntimeConfig {
@@ -54,6 +61,8 @@ interface RuntimeConfig {
   lockTtlMs: number;
   lockDurationMs: number;
   stalledIntervalMs: number;
+  clusterSimilarityThreshold: number;
+  clusterTimeWindowHours: number;
 }
 
 export interface ScheduledCrawl {
@@ -80,6 +89,8 @@ function runtimeConfig(options: WorkerRuntimeOptions): RuntimeConfig {
     lockTtlMs: defaults.lockTtlMs,
     lockDurationMs: options.lockDurationMs ?? 30_000,
     stalledIntervalMs: options.stalledIntervalMs ?? 1_000,
+    clusterSimilarityThreshold: options.clusterSimilarityThreshold ?? defaults.clusterSimilarityThreshold,
+    clusterTimeWindowHours: options.clusterTimeWindowHours ?? defaults.clusterTimeWindowHours,
   };
 }
 
@@ -89,10 +100,6 @@ function jobOptions(config: RuntimeConfig): JobsOptions {
     attempts: config.attempts,
     backoff: { type: 'exponential', delay: config.backoffDelayMs },
   };
-}
-
-function taskIdFromPayload(payload: JobPayload): string | undefined {
-  return 'crawlTaskId' in payload ? payload.crawlTaskId : undefined;
 }
 
 function jobIdOf(job: Job) {
@@ -124,6 +131,8 @@ export class WorkerRuntime {
   private readonly lock: SourceLock;
   readonly llmConfig: LLMConfig;
   readonly llmProvider: LLMProvider;
+  readonly embeddingConfig: EmbeddingConfig;
+  readonly embeddingProvider: EmbeddingProvider;
   private scheduler?: ReturnType<typeof setInterval>;
   private accepting = true;
   private started = false;
@@ -135,6 +144,8 @@ export class WorkerRuntime {
     this.now = options.now ?? (() => new Date());
     this.llmConfig = options.llmConfig ?? loadLLMConfig();
     this.llmProvider = options.llmProvider ?? createLLMProvider(this.llmConfig);
+    this.embeddingConfig = options.embeddingConfig ?? loadEmbeddingConfig();
+    this.embeddingProvider = options.embeddingProvider ?? createEmbeddingProvider(this.embeddingConfig);
     this.baseRedis = new Redis(options.redisUrl ?? process.env.REDIS_URL ?? 'redis://localhost:6379', {
       maxRetriesPerRequest: null,
     });
@@ -226,7 +237,7 @@ export class WorkerRuntime {
     const parsedName = jobNameSchema.parse(job.name);
     if (!isImplementedJobName(parsedName)) throw new Error(unsupportedJobMessage(parsedName));
     const payload = parseJobPayload(parsedName, job.data);
-    const taskId = taskIdFromPayload(payload);
+    const taskId = 'crawlTaskId' in payload ? payload.crawlTaskId : undefined;
     const attemptNumber = job.attemptsMade + 1;
     if (taskId) await this.markRunning(taskId, job.attemptsMade);
     const jobId = jobIdOf(job);
@@ -264,8 +275,37 @@ export class WorkerRuntime {
             parseJobPayload('ai_process', nextPayload);
             await this.queue('ai_process').add('ai_process', nextPayload, { ...jobOptions(this.config), jobId: nextJobId });
           },
+          embeddingConfig: this.embeddingConfig,
+          enqueueEmbedding: async (nextPayload, nextJobId) => {
+            parseJobPayload('embedding', nextPayload);
+            await this.queue('embedding').add('embedding', nextPayload, { ...jobOptions(this.config), jobId: nextJobId });
+          },
         }, (payload as AiProcessJobPayload).aiTaskId, attemptNumber);
         logger.info(`[job_id=${jobId}] [article_id=${result.articleId}] ai_process task_type=${result.taskType} status=${result.status}`);
+        return result;
+      }
+      if (queueName === 'embedding') {
+        const result = await processEmbeddingTask({
+          db: this.db,
+          config: this.embeddingConfig,
+          provider: this.embeddingProvider,
+          now: this.now,
+          enqueueCluster: async (nextPayload, nextJobId) => {
+            parseJobPayload('cluster', nextPayload);
+            await this.queue('cluster').add('cluster', nextPayload, { ...jobOptions(this.config), jobId: nextJobId });
+          },
+        }, (payload as EmbeddingJobPayload).embeddingTaskId, attemptNumber);
+        logger.info(`[job_id=${jobId}] [article_id=${result.articleId}] embedding status=${result.status} provider_called=${result.providerCalled}`);
+        return result;
+      }
+      if (queueName === 'cluster') {
+        const result = await processClusterTask({
+          db: this.db,
+          now: this.now,
+          similarityThreshold: this.config.clusterSimilarityThreshold,
+          timeWindowHours: this.config.clusterTimeWindowHours,
+        }, (payload as ClusterJobPayload).clusterTaskId, attemptNumber);
+        logger.info(`[job_id=${jobId}] [article_id=${result.articleId}] cluster status=${result.status} event_id=${result.eventId ?? 'none'}`);
         return result;
       }
       const normalizePayload = payload as NormalizeJobPayload;
@@ -297,6 +337,22 @@ export class WorkerRuntime {
         }).where(eq(ai_tasks.id, (payload as { aiTaskId: string }).aiTaskId));
         logger.error(`[job_id=${jobId}] ai_process ${canRetry ? 'retrying' : 'failed'} retry_count=${attemptNumber}`, aiDetails.message);
         if (!canRetry && !aiDetails.retryable) throw new UnrecoverableError(aiDetails.message);
+        throw error;
+      }
+      if (queueName === 'embedding' || queueName === 'cluster') {
+        const stage09TaskId = queueName === 'embedding'
+          ? (payload as EmbeddingJobPayload).embeddingTaskId
+          : (payload as ClusterJobPayload).clusterTaskId;
+        const stage09Details = queueName === 'embedding' ? embeddingTaskError(error) : clusterTaskError(error);
+        const canRetry = stage09Details.retryable && attemptNumber < this.config.attempts;
+        await this.db.update(ai_tasks).set({
+          status: canRetry ? 'retrying' : 'failed',
+          retry_count: attemptNumber,
+          error: stage09Details.message,
+          updated_at: this.now(),
+        }).where(eq(ai_tasks.id, stage09TaskId));
+        logger.error(`[job_id=${jobId}] ${queueName} ${canRetry ? 'retrying' : 'failed'} retry_count=${attemptNumber}`, stage09Details.message);
+        if (!canRetry && !stage09Details.retryable) throw new UnrecoverableError(stage09Details.message);
         throw error;
       }
       const canRetry = details.retryable && attemptNumber < this.config.attempts;
@@ -403,14 +459,19 @@ export class WorkerRuntime {
     const parsedName = jobNameSchema.parse(name);
     if (!isImplementedJobName(parsedName)) throw new Error(unsupportedJobMessage(parsedName));
     const parsedPayload = parseJobPayload(parsedName, payload);
-    if (parsedName === 'ai_process') {
-      const aiPayload = parsedPayload as AiProcessJobPayload;
-      const task = await this.db.select({ id: ai_tasks.id, articleId: ai_tasks.article_id })
+    if (parsedName === 'ai_process' || parsedName === 'embedding' || parsedName === 'cluster') {
+      const stage09Payload = parsedPayload as AiProcessJobPayload & Partial<EmbeddingJobPayload & ClusterJobPayload>;
+      const taskId = parsedName === 'ai_process'
+        ? stage09Payload.aiTaskId
+        : parsedName === 'embedding' ? stage09Payload.embeddingTaskId : stage09Payload.clusterTaskId;
+      if (!taskId) throw new Error(`${parsedName} payload 缺少 task id`);
+      const expectedType = parsedName === 'ai_process' ? undefined : parsedName === 'embedding' ? 'embedding' : 'event-cluster';
+      const task = await this.db.select({ id: ai_tasks.id, articleId: ai_tasks.article_id, taskType: ai_tasks.task_type })
         .from(ai_tasks)
-        .where(eq(ai_tasks.id, aiPayload.aiTaskId))
+        .where(eq(ai_tasks.id, taskId))
         .limit(1);
-      if (!task[0] || task[0].articleId !== aiPayload.articleId) {
-        throw new Error(`ai_process task 不存在或 article_id 不匹配: ${aiPayload.aiTaskId}`);
+      if (!task[0] || task[0].articleId !== stage09Payload.articleId || (expectedType && task[0].taskType !== expectedType)) {
+        throw new Error(`${parsedName} task 不存在、类型或 article_id 不匹配: ${taskId}`);
       }
     }
     const jobId = options.jobId ?? `${parsedName}-${Date.now()}`;

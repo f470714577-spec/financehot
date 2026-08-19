@@ -2,11 +2,11 @@
 
 > FinanceHot 项目当前状态的短期事实源。每次阶段完成后更新，防止长对话或新会话产生架构漂移。
 > 权威基线仍是《FinanceHot DeepSeek 开发总控包 V1》+ `docs/architecture.md` + ADR。
-> 最近复验：2026-08-19；阶段 05、阶段 06、阶段 07 已完成本地验收，阶段 08 已实现并恢复根级稳定全绿门禁；未推送、未部署、未上线。真实模型质量验收已移至供应商选定后的上线前验收。
+> 最近复验：2026-08-19；阶段 05–08 已完成本地验收，阶段 09 Embedding 与保守事件聚类已完成代码和真实受控服务验收；未推送、未部署、未上线。真实模型质量验收已移至供应商选定后的上线前验收。
 
 ## 当前阶段
 
-阶段 08 —— Article AI 过滤、翻译、摘要、分类与实体抽取流水线（功能已实现；根级稳定门禁已恢复）
+阶段 09 —— Article Embedding、保守事件聚类与 Article↔Event 关联（受控服务验收完成；真实模型质量未验收）
 
 ## 项目目标
 
@@ -32,7 +32,7 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 
 - `apps/web` 可执行短事务 CRUD 与任务入队，**禁止在 HTTP 请求内执行 Crawler、LLM、Embedding、Event Cluster 等耗时流水线**。
 - `apps/worker` 负责持久化与工作流编排，crawler/ai 只产出 DTO，不写库。
-- 阶段 08 仅启用 `crawl`、`normalize`、`ai_process`；Embedding、聚类、Finance Score、市场判断、后台和前端重构均未实现。
+- 阶段 09 当前启用 `crawl`、`normalize`、`ai_process`、`embedding`、`cluster`；`score`、`daily_report` 明确拒绝。Embedding/聚类只在 Worker 异步执行，Finance Score、Heat Score、Event LLM 总结、后台和前端重构仍未实现。
 - LLM 配置由 `LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_MODEL`、`LLM_API_KEY` 控制；四项缺失时 Worker 仍启动并明确输出 `status=unconfigured`，不发模型请求。
 
 ## Article/Event 核心原则
@@ -66,6 +66,7 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - 阶段 06：安全采集 Adapter 与同步 `crawl-once`（已完成，本地验收通过）
 - 阶段 07：BullMQ `crawl`/`normalize` 可靠流水线（已完成，本地验收通过）
 - 阶段 08：Article AI 处理流水线（已完成本地工程验收，根级稳定门禁已恢复；真实模型质量待上线前验收）
+- 阶段 09：Embedding、保守事件聚类与 Article↔Event 关联（已完成本地受控 HTTP Provider + 真实 PostgreSQL/Redis 验收；真实模型质量待上线前验收）
 
 ## 阶段 01 验证结果
 
@@ -145,13 +146,22 @@ FinanceHot 是面向中文用户的"全球财经新闻实时聚合、过滤、�
 - 真实 Redis/PostgreSQL 十条样本、失败 retry/failed、重复入队缓存命中、migration 与全量门禁均已完成；历史红叉和原始证据见 `BLOCKED.md`。
 - 当前没有真实模型密钥；即使本地受控 HTTP Provider 验收通过，也必须明确记录“真实模型质量未验收”。
 
+## 阶段 09 当前结果
+
+- 独立 `EmbeddingProvider` 使用 OpenAI-compatible `/embeddings` 协议；缺少配置时 Worker 可启动并返回 `unconfigured`，不发请求；真实供应商和密钥未接入。
+- Embedding 输入固定为规范化 `title_zh + "\\n" + summary_zh`；`article_embeddings` 强制保存 provider、model、dimensions、向量、input_hash、embedding_version，并以五字段唯一约束保证内容/版本不变时不重算。
+- Worker 已接通 `ai_process → embedding → cluster`，只接受非隐藏且阶段08完成的 Article；Embedding 成功后写 `embedded`，聚类成功后通过 `event_articles` 写关系并更新 `clustered`。
+- 聚类当前使用 pgvector 精确 cosine 查询：同 provider/model/version/dimensions、72 小时窗口、分类不冲突、默认阈值 0.86；因表允许混合维度，本阶段不建立 HNSW/IVFFlat 索引。
+- 事件关系在事务内维护：唯一主报道、`article_count`、`source_count`、`first_seen_at`、`last_seen_at`；事务级锁覆盖候选查询和写关系，重复任务、重试、重启和双 Worker 竞争不会重复调用、重复建关系或产生孤儿 Event。
+- 真实 PostgreSQL/Redis + 本地受控 HTTP Provider 已验证 9 篇样本：两个同事实多信源 Event、分类冲突/低相似不合并、失败 retrying→failed、双 Worker 竞争和重复成功幂等；Worker 全量 `40/40`。真实模型质量、成本和供应商效果仍未验收。
+
 ## 架构待办
 
 - 阶段 05：新闻查询 API、筛选、搜索与分页；已完成本地正式验收。
 - 阶段 06：crawler 安全 Adapter、来源表驱动同步 crawl-once、Raw/Article 幂等（已完成本地验收）。
 - 阶段 07：BullMQ `crawl`/`normalize` Queue + Worker 状态机（已完成本地验收；详见 `docs/acceptance/phase-07.md`）。
 - 阶段 08：LLM Provider 实现 + Structured Output + 翻译/摘要/分类/过滤（已完成本地工程验收，根级测试稳定门禁已恢复；真实模型质量在上线前验收，详见 `docs/acceptance/phase-08.md`）。
-- 阶段 09：Embedding、事件聚类与关联（未开始）。
+- 阶段 09：Embedding、事件聚类与关联（已完成本地受控服务验收；详见 `docs/acceptance/phase-09.md`；真实模型质量待上线前验收）。
 - 阶段 16：多阶段生产 Dockerfile + 部署。
 
 ## 禁止事项

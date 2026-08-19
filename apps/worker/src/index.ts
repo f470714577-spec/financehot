@@ -26,8 +26,9 @@ async function main() {
   logger.info(`REDIS_URL=${env.REDIS_URL ? 'configured' : 'default localhost'}`);
   logger.info(`DATABASE_URL=${env.DATABASE_URL ? 'configured' : 'default localhost'}`);
   logger.info(`LLM_PROVIDER=${runtime.llmConfig.provider ?? 'unconfigured'} model=${runtime.llmConfig.model ?? 'unconfigured'} status=${runtime.llmProvider.name === 'unconfigured' ? 'unconfigured' : 'configured'}`);
+  logger.info(`EMBEDDING_PROVIDER=${runtime.embeddingConfig.provider ?? 'unconfigured'} model=${runtime.embeddingConfig.model ?? 'unconfigured'} status=${runtime.embeddingProvider.name === 'unconfigured' ? 'unconfigured' : 'configured'} version=${runtime.embeddingConfig.embeddingVersion}`);
   await runtime.start();
-  logger.info(`Worker queues started: crawl, normalize, ai_process; concurrency=${runtime.config.concurrency}`);
+  logger.info(`Worker queues started: crawl, normalize, ai_process, embedding, cluster; concurrency=${runtime.config.concurrency}`);
 }
 
 main().catch((err) => {

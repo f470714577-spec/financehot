@@ -9,7 +9,7 @@ export const QUEUE_NAMES = ['crawl', 'normalize', 'ai_process', 'embedding', 'cl
 
 export function getWorkerConfig() {
   return {
-    queuePrefix: process.env.FINANCEHOT_QUEUE_PREFIX ?? 'financehot:stage07',
+    queuePrefix: process.env.FINANCEHOT_QUEUE_PREFIX ?? 'financehot:stage09',
     concurrency: positiveInt(process.env.FINANCEHOT_WORKER_CONCURRENCY, 2, 32),
     attempts: positiveInt(process.env.FINANCEHOT_QUEUE_ATTEMPTS, 3, 10),
     backoff: {
@@ -22,6 +22,10 @@ export function getWorkerConfig() {
     lockTtlMs: positiveInt(process.env.FINANCEHOT_SOURCE_LOCK_TTL_MS, 900_000, 86_400_000),
     idlePollMs: 25,
     idleTimeoutMs: positiveInt(process.env.FINANCEHOT_DRAIN_TIMEOUT_MS, 120_000, 3_600_000),
+    clusterSimilarityThreshold: Number.isFinite(Number(process.env.FINANCEHOT_CLUSTER_SIMILARITY_THRESHOLD))
+      ? Math.min(1, Math.max(0, Number(process.env.FINANCEHOT_CLUSTER_SIMILARITY_THRESHOLD)))
+      : 0.86,
+    clusterTimeWindowHours: positiveInt(process.env.FINANCEHOT_CLUSTER_TIME_WINDOW_HOURS, 72, 720),
   } as const;
 }
 

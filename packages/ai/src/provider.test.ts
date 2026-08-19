@@ -1,5 +1,5 @@
 // @ts-expect-error Node 原生 TypeScript 测试需要显式扩展名。
-import { LLMProviderError, OpenAICompatibleProvider, createLLMProvider, estimateCost, providerStatus, type LLMConfig, type ProviderRequestInit, type ProviderResponse } from './provider.ts';
+import { EmbeddingProviderError, LLMProviderError, OpenAICompatibleEmbeddingProvider, OpenAICompatibleProvider, createEmbeddingProvider, createLLMProvider, estimateCost, loadEmbeddingConfig, providerStatus, type EmbeddingConfig, type LLMConfig, type ProviderRequestInit, type ProviderResponse } from './provider.ts';
 // @ts-expect-error Node 原生 TypeScript 测试需要显式扩展名。
 import { financialFilterSchema } from './schemas.ts';
 
@@ -31,6 +31,34 @@ function successBody(content = '{"isFinancial":true,"score":0.9,"reason":"contai
     model: 'model-one',
     choices: [{ message: { content } }],
     usage: { prompt_tokens: 13, completion_tokens: 7 },
+  };
+}
+
+function embeddingConfig(overrides: Partial<EmbeddingConfig> = {}): EmbeddingConfig {
+  return {
+    provider: 'openai-compatible',
+    baseUrl: 'http://embedding-provider/v1',
+    model: 'embedding-model',
+    apiKey: 'embedding-key',
+    embeddingVersion: 'v1',
+    timeoutMs: 20,
+    maxRetries: 2,
+    retryDelayMs: 0,
+    ...overrides,
+  };
+}
+
+function embeddingResponse(vector: unknown, status = 200, dimensions?: number): ProviderResponse {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async json() {
+      return {
+        model: 'embedding-model',
+        ...(dimensions === undefined ? {} : { dimensions }),
+        data: [{ index: 0, embedding: vector }],
+      };
+    },
   };
 }
 
@@ -303,6 +331,124 @@ const cases: TestCase[] = [
             && attempt.usage === undefined),
         'timeout audit',
       );
+    },
+  },
+  {
+    name: 'Embedding Provider 成功解析向量、维度和请求配置',
+    async run() {
+      const requests: Array<{ url: string; init?: ProviderRequestInit }> = [];
+      const provider = new OpenAICompatibleEmbeddingProvider(embeddingConfig(), {
+        fetchFn: async (url, init) => {
+          requests.push({ url: String(url), init });
+          return embeddingResponse([0.5, -0.25, 0.125], 200, 3);
+        },
+      });
+      const output = await provider.embed({ text: '规范化标题\n规范化摘要' });
+      assertDeepEqual(output.vector, [0.5, -0.25, 0.125], 'embedding vector');
+      assertEqual(output.dimensions, 3, 'embedding dimensions');
+      assertEqual(output.provider, 'openai-compatible', 'embedding provider');
+      assertEqual(output.model, 'embedding-model', 'embedding model');
+      assertEqual(requests[0].url, 'http://embedding-provider/v1/embeddings', 'embedding URL');
+      const body = JSON.parse(String(requests[0].init?.body));
+      assertEqual(body.input, '规范化标题\n规范化摘要', 'embedding input');
+      assertEqual(body.model, 'embedding-model', 'embedding request model');
+    },
+  },
+  {
+    name: 'Embedding Provider 拒绝空向量、非有限数和返回维度不一致',
+    async run() {
+      const emptyProvider = new OpenAICompatibleEmbeddingProvider(embeddingConfig(), { fetchFn: async () => embeddingResponse([]) });
+      await assertRejects(emptyProvider.embed({ text: 'empty' }), (error) => error instanceof EmbeddingProviderError && error.kind === 'invalid_response', 'empty vector');
+
+      const nonFiniteProvider = new OpenAICompatibleEmbeddingProvider(embeddingConfig(), { fetchFn: async () => embeddingResponse([0.1, Number.NaN]) });
+      await assertRejects(nonFiniteProvider.embed({ text: 'nan' }), (error) => error instanceof EmbeddingProviderError && error.kind === 'invalid_response', 'non-finite vector');
+
+      const mismatchedProvider = new OpenAICompatibleEmbeddingProvider(embeddingConfig(), { fetchFn: async () => embeddingResponse([0.1, 0.2], 200, 3) });
+      await assertRejects(mismatchedProvider.embed({ text: 'dimensions' }), (error) => error instanceof EmbeddingProviderError && error.kind === 'invalid_response', 'dimension mismatch');
+    },
+  },
+  {
+    name: 'Embedding 配置缺失返回 unconfigured 且零请求',
+    async run() {
+      let calls = 0;
+      const provider = createEmbeddingProvider(embeddingConfig({ baseUrl: undefined, apiKey: undefined }), {
+        fetchFn: async () => {
+          calls += 1;
+          return embeddingResponse([1]);
+        },
+      });
+      assertEqual(provider.name, 'unconfigured', 'embedding provider status');
+      await assertRejects(provider.embed({ text: 'no request' }), (error) => error instanceof EmbeddingProviderError && error.kind === 'unconfigured' && error.retryable === false, 'unconfigured embedding');
+      assertEqual(calls, 0, 'unconfigured request count');
+      const loaded = loadEmbeddingConfig({ EMBEDDING_PROVIDER: '', EMBEDDING_BASE_URL: '', EMBEDDING_MODEL: '', EMBEDDING_API_KEY: '' });
+      assertEqual(loaded.embeddingVersion, 'v1', 'default embedding version');
+    },
+  },
+  {
+    name: 'Embedding 401 不重试并分类为 authentication',
+    async run() {
+      let calls = 0;
+      const provider = new OpenAICompatibleEmbeddingProvider(embeddingConfig(), {
+        fetchFn: async () => {
+          calls += 1;
+          return embeddingResponse({ error: 'unauthorized' }, 401);
+        },
+      });
+      await assertRejects(provider.embed({ text: 'auth' }), (error) => error instanceof EmbeddingProviderError && error.kind === 'authentication', 'embedding 401');
+      assertEqual(calls, 1, 'embedding 401 calls');
+    },
+  },
+  {
+    name: 'Embedding 429/5xx 只做有限重试并在恢复后成功',
+    async run() {
+      let calls = 0;
+      const provider = new OpenAICompatibleEmbeddingProvider(embeddingConfig(), {
+        fetchFn: async () => {
+          calls += 1;
+          return calls < 3 ? embeddingResponse({ error: 'retry' }, calls === 1 ? 429 : 503) : embeddingResponse([0.3, 0.4]);
+        },
+      });
+      const output = await provider.embed({ text: 'retry' });
+      assertEqual(output.dimensions, 2, 'embedding retry dimensions');
+      assertEqual(calls, 3, 'embedding retry calls');
+    },
+  },
+  {
+    name: 'Embedding 超时和网络错误分类且有限重试',
+    async run() {
+      let timeoutCalls = 0;
+      const timeoutProvider = new OpenAICompatibleEmbeddingProvider(embeddingConfig({ maxRetries: 1 }), {
+        fetchFn: async () => {
+          timeoutCalls += 1;
+          const error = new Error('timed out');
+          error.name = 'AbortError';
+          throw error;
+        },
+      });
+      await assertRejects(timeoutProvider.embed({ text: 'timeout' }), (error) => error instanceof EmbeddingProviderError && error.kind === 'timeout', 'embedding timeout');
+      assertEqual(timeoutCalls, 2, 'embedding timeout calls');
+
+      let networkCalls = 0;
+      const networkProvider = new OpenAICompatibleEmbeddingProvider(embeddingConfig({ maxRetries: 1 }), {
+        fetchFn: async () => {
+          networkCalls += 1;
+          throw new Error('connection reset');
+        },
+      });
+      await assertRejects(networkProvider.embed({ text: 'network' }), (error) => error instanceof EmbeddingProviderError && error.kind === 'network', 'embedding network');
+      assertEqual(networkCalls, 2, 'embedding network calls');
+    },
+  },
+  {
+    name: 'Embedding 非法响应分类且不把 NaN 或 Infinity 写入输出',
+    async run() {
+      const malformedProvider = new OpenAICompatibleEmbeddingProvider(embeddingConfig(), {
+        fetchFn: async () => ({ ok: true, status: 200, async json() { return { data: [{ embedding: ['0.1'] }] }; } }),
+      });
+      await assertRejects(malformedProvider.embed({ text: 'malformed' }), (error) => error instanceof EmbeddingProviderError && error.kind === 'invalid_response', 'malformed embedding');
+
+      const infinityProvider = new OpenAICompatibleEmbeddingProvider(embeddingConfig(), { fetchFn: async () => embeddingResponse([Number.POSITIVE_INFINITY]) });
+      await assertRejects(infinityProvider.embed({ text: 'infinity' }), (error) => error instanceof EmbeddingProviderError && error.kind === 'invalid_response', 'infinite embedding');
     },
   },
 ];

@@ -105,7 +105,7 @@ export const article_embeddings = pgTable(
       .references(() => articles.id),
     provider: text('provider').notNull(),
     model: text('model').notNull(),
-    dimensions: integer('dimensions'),
+    dimensions: integer('dimensions').notNull(),
     embedding: vector('embedding').notNull(),
     input_hash: text('input_hash').notNull(),
     embedding_version: text('embedding_version').notNull(),
