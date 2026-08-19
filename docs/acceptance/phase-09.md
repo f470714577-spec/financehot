@@ -127,16 +127,16 @@ $env:CI='true'; pnpm --filter @financehot/worker test
 第 2 轮按以下顺序串行执行并全部退出 0：
 
 ```text
-$env:CI='true'; pnpm lint -- --force --output-logs=errors-only
+$env:CI='true'; pnpm lint --force --output-logs=errors-only
 Tasks: 7 successful, 7 total
 
-$env:CI='true'; pnpm build -- --force --output-logs=errors-only
+$env:CI='true'; pnpm build --force --output-logs=errors-only
 Tasks: 7 successful, 7 total
 
-$env:CI='true'; pnpm typecheck -- --force --output-logs=errors-only
+$env:CI='true'; pnpm typecheck --force --output-logs=errors-only
 Tasks: 7 successful, 7 total
 
-$env:CI='true'; pnpm test -- --force --output-logs=errors-only
+$env:CI='true'; pnpm test --force --output-logs=errors-only
 Tasks: 7 successful, 7 total
 
 git diff --check
@@ -148,3 +148,37 @@ exit 0
 本轮可靠性修复后的最终工作树再次按同一顺序执行上述四项门禁，均为 Turbo `7 successful / 7 total`、0 cached，`git diff --check` 退出 0。只读 PostgreSQL 残留核对为 `sources=0`、`articles=0`、`events=0`、`ai_tasks=0`、`article_embeddings=0`、`event_articles=0`；白名单外改动为 0。
 
 本轮仅针对测试可靠性缺口修改 `embedding-cluster.integration.test.ts`、`PROGRESS.md`、`BLOCKED.md` 和本验收文档；`embedding-pipeline.ts`、`cluster-pipeline.ts` 及其他白名单外文件未改。当前阻塞：无；未 push、未 deploy。
+
+## 8. 根级命令校正与真实结果补录
+
+历史错误命令及失败输出保留在 `BLOCKED.md`：旧命令在 `pnpm lint`、`build`、`typecheck`、`test` 后多传了一个 `--`，实际在 lint 即因各包 ESLint 报 `Invalid option '--force'` 而失败，结果为 `0 successful / 7 total`、退出码 2；此前把该错误命令写成 `7/7` 属于误记，现已纠正。另一次 Worker `tsc --noEmit` build 失败是独立事件，原始摘要为 `5 successful / 7 total`、`@financehot/worker#build failed`，两类失败均未删除或混为一谈。
+
+按正确命令重新执行的真实结果：
+
+```text
+$env:CI='true'; pnpm lint --force --output-logs=errors-only
+Tasks:    7 successful, 7 total
+Cached:    0 cached, 7 total
+Time:    5.111s
+退出码 0
+
+$env:CI='true'; pnpm build --force --output-logs=errors-only
+Tasks:    7 successful, 7 total
+Cached:    0 cached, 7 total
+Time:    21.911s
+退出码 0
+
+$env:CI='true'; pnpm typecheck --force --output-logs=errors-only
+Tasks:    7 successful, 7 total
+Cached:    0 cached, 7 total
+Time:    4.838s
+退出码 0
+
+$env:CI='true'; pnpm test --force --output-logs=errors-only
+Tasks:    7 successful, 7 total
+Cached:    0 cached, 7 total
+Time:    18.906s
+退出码 0
+```
+
+本节为文档证据补录，不涉及代码修改；当前阻塞：无。

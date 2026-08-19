@@ -73,16 +73,16 @@ event_articles=0
 最终根级门禁按任务书顺序串行执行，均退出 0：
 
 ```text
-$env:CI='true'; pnpm lint -- --force --output-logs=errors-only
+$env:CI='true'; pnpm lint --force --output-logs=errors-only
 Tasks: 7 successful, 7 total
 
-$env:CI='true'; pnpm build -- --force --output-logs=errors-only
+$env:CI='true'; pnpm build --force --output-logs=errors-only
 Tasks: 7 successful, 7 total
 
-$env:CI='true'; pnpm typecheck -- --force --output-logs=errors-only
+$env:CI='true'; pnpm typecheck --force --output-logs=errors-only
 Tasks: 7 successful, 7 total
 
-$env:CI='true'; pnpm test -- --force --output-logs=errors-only
+$env:CI='true'; pnpm test --force --output-logs=errors-only
 Tasks: 7 successful, 7 total
 
 git diff --check
@@ -90,6 +90,63 @@ exit_code=0
 ```
 
 当前阻塞：无。
+
+## 根级门禁命令校正补录（2026-08-19）
+
+历史记录中的错误命令和失败证据保留如下，不以错误命令作为本次最终结果依据。错误命令多传了一个 `--`，导致 Turbo 参数被继续传给各包脚本；该次执行在 lint 即失败，并未得到此前误记的 `7 successful / 7 total`：
+
+```text
+$env:CI='true'; pnpm lint -- --force --output-logs=errors-only
+$env:CI='true'; pnpm build -- --force --output-logs=errors-only
+$env:CI='true'; pnpm typecheck -- --force --output-logs=errors-only
+$env:CI='true'; pnpm test -- --force --output-logs=errors-only
+
+@financehot/ui:lint: Invalid option '--force' - perhaps you meant '--format'?
+@financehot/db:lint: Invalid option '--force' - perhaps you meant '--format'?
+@financehot/web:lint: Invalid option '--force' - perhaps you meant '--format'?
+@financehot/crawler:lint: Invalid option '--force' - perhaps you meant '--format'?
+@financehot/ai:lint: Invalid option '--force' - perhaps you meant '--format'?
+@financehot/worker:lint: Invalid option '--force' - perhaps you meant '--format'?
+@financehot/shared:lint: Invalid option '--force' - perhaps you meant '--format'?
+Tasks: 0 successful, 7 total
+退出码 2
+```
+
+另有一次相互独立的历史失败：最终门禁第一次执行到 `build` 时，新增测试的可选 Provider/Model 类型导致 Worker `tsc --noEmit` 失败；原始摘要为 `7` 项中 `5 successful`、`@financehot/worker#build failed`。该失败随后已在白名单测试文件中修正，并未删除这条失败记录，不能替代上述错误命令的 lint 失败证据。
+
+本次按正确命令重新执行，真实结果如下：
+
+```text
+$env:CI='true'; pnpm lint --force --output-logs=errors-only
+$ turbo run lint "--force" "--output-logs=errors-only"
+Tasks:    7 successful, 7 total
+Cached:    0 cached, 7 total
+Time:    5.111s
+退出码 0
+
+$env:CI='true'; pnpm build --force --output-logs=errors-only
+$ turbo run build "--force" "--output-logs=errors-only"
+Tasks:    7 successful, 7 total
+Cached:    0 cached, 7 total
+Time:    21.911s
+退出码 0
+
+$env:CI='true'; pnpm typecheck --force --output-logs=errors-only
+$ turbo run typecheck "--force" "--output-logs=errors-only"
+Tasks:    7 successful, 7 total
+Cached:    0 cached, 7 total
+Time:    4.838s
+退出码 0
+
+$env:CI='true'; pnpm test --force --output-logs=errors-only
+$ turbo run test --concurrency=1 "--force" "--output-logs=errors-only"
+Tasks:    7 successful, 7 total
+Cached:    0 cached, 7 total
+Time:    18.906s
+退出码 0
+```
+
+本次仅补正文档证据，未修改代码；当前阻塞：无。
 
 ## 阶段09任务2/3反向验证与恢复（2026-08-19）
 

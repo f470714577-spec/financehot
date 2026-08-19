@@ -11,6 +11,7 @@
 - 按任务书完成一次性历史键清理：确认无相关 Worker/测试进程后，`stage09_keys_before=1232`、`stage09_keys_after=0`；未使用 FLUSH/清库。当前 PostgreSQL 六类测试残留均为 `0`。
 - 修复后最终版本连续 5 次 Worker 均为 `tests 42 / pass 42 / fail 0 / skipped 0 / todo 0`、`Connection is closed=0`、退出码 0；期间一次早期第 5 次尝试为 `42/41/1`，立即重跑为绿，随后重启连续计数并完成 5 次全绿。
 - 按顺序执行根级 `lint`、`build`、`typecheck`、`test`，每项 Turbo 均为 `7 successful / 7 total`、0 cached，`git diff --check` 退出 0。
+- 文档补录：保留旧的多余 `--` 错误命令及其 lint `Invalid option '--force'`、`0/7`、退出码 2 的实际失败，并与另一轮 Worker build 失败分开记录；按正确 `pnpm lint/build/typecheck/test --force --output-logs=errors-only` 重新执行，四项均 `7 successful / 7 total`、0 cached、退出码 0，真实输出已写入 `BLOCKED.md` 与 `docs/acceptance/phase-09.md`。
 - 当前未改任何阶段09业务实现文件，阻塞：无。
 
 ## 阶段09返工回执（2026-08-19）
