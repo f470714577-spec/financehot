@@ -10,6 +10,8 @@ import {
 } from '@financehot/db';
 import { and, eq, inArray, lt, ne, or, sql } from 'drizzle-orm';
 
+import { embeddingInputHash } from './embedding-pipeline';
+
 type WorkerDb = Db['db'];
 type WorkerTransaction = Parameters<WorkerDb['transaction']>[0] extends (tx: infer Tx) => Promise<unknown> ? Tx : never;
 type WorkerQuery = WorkerDb | WorkerTransaction;
@@ -126,6 +128,9 @@ async function findCandidate(
     memberPublishedAt: articles.published_at,
     memberFetchedAt: articles.fetched_at,
     memberCreatedAt: articles.created_at,
+    memberTitleZh: articles.title_zh,
+    memberSummaryZh: articles.summary_zh,
+    inputHash: article_embeddings.input_hash,
     similarity,
   })
     .from(event_articles)
@@ -143,6 +148,12 @@ async function findCandidate(
   const windowMs = timeWindowHours * 60 * 60 * 1_000;
   const byEvent = new Map<string, Candidate>();
   for (const row of rows) {
+    const memberInputHash = embeddingInputHash({
+      title_zh: row.memberTitleZh,
+      summary_zh: row.memberSummaryZh,
+    });
+    if (!memberInputHash || memberInputHash !== row.inputHash) continue;
+
     const candidateTime = (row.memberPublishedAt ?? row.memberFetchedAt ?? row.memberCreatedAt).getTime();
     const score = Number(row.similarity);
     if (!Number.isFinite(score) || score < threshold || Math.abs(candidateTime - currentTime) > windowMs) continue;

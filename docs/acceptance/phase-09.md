@@ -93,7 +93,27 @@ $env:CI='true'; pnpm --filter @financehot/db db:migrate
 
 本阶段证明的是协议校验、持久化追踪、真实队列/数据库事务、保守聚类规则和幂等行为。没有真实供应商、真实模型密钥或生产语料，因此真实模型的语义质量、成本和阈值适配仍未验收，必须留到供应商选定后的上线前验收。
 
-## 6. 根级最终门禁
+## 6. 本轮可靠性修复红→绿
+
+阶段09验收补出的两个可靠性缺口已用真实 PostgreSQL/Redis 增加永久回归测试，Worker 测试由 40 项增至 42 项：
+
+- 成功 Embedding 任务重放：加载该任务精确对应的向量，复用现有幂等 cluster task 创建/入队；Provider 新调用为 0，首次入队 1 次，再次重放不新增 task 或队列 job。精确向量缺失时抛出明确数据一致性错误。
+- 当前向量候选：复用 Embedding 生成路径的规范化 `title_zh + "\\n" + summary_zh` 与 SHA-256，只有 `provider/model/embedding_version/dimensions` 一致且 `input_hash` 等于 Article 当前内容 hash 的成员向量参与匹配；历史向量继续保留。
+
+任务1先加测试的原始红叉：`tests 42 / pass 40 / fail 2 / skipped 0 / todo 0`，分别失败于重放未创建 cluster task、旧向量误并旧 Event。修复后首次及重复运行均为：
+
+```text
+$env:CI='true'; pnpm --filter @financehot/worker test
+ℹ tests 42
+ℹ pass 42
+ℹ fail 0
+ℹ skipped 0
+ℹ todo 0
+```
+
+反向验证也已完成：临时恢复 success 直接返回时 `42/41/1`，重放回归失败；临时取消 current `input_hash` 限制时 `42/41/1`，旧向量回归失败。两项均立即还原并复跑为 `42/42`。未改变阈值、72 小时时窗或分类规则。
+
+## 7. 根级最终门禁
 
 第 1 轮因此前中断的受控夹具残留使 DB 观察到 `events=45` 而非 Seed 的 12，已记录原始输出并精确清理本轮测试残留；没有清库或修改 Seed。清理后 DB 独立测试 `4/4`。
 
@@ -117,3 +137,5 @@ exit 0
 ```
 
 本地提交在最终白名单复核后创建；未 push、未 deploy。
+
+本轮可靠性修复后的最终工作树再次按同一顺序执行上述四项门禁，均为 Turbo `7 successful / 7 total`、0 cached，`git diff --check` 退出 0。只读 PostgreSQL 残留核对为 `sources=0`、`articles=0`、`events=0`、`ai_tasks=0`、`article_embeddings=0`、`event_articles=0`；白名单外改动为 0。

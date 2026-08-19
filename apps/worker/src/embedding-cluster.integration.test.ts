@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { createHash } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -22,10 +23,16 @@ import {
   events,
   sources,
 } from '@financehot/db';
-import { inArray } from 'drizzle-orm';
+import { inArray, like } from 'drizzle-orm';
 
 import { createOrGetAiTask } from './ai-pipeline';
-import { createOrGetEmbeddingTask, enqueueEmbeddingTask } from './embedding-pipeline';
+import {
+  createOrGetEmbeddingTask,
+  embeddingCacheKey,
+  enqueueEmbeddingTask,
+  processEmbeddingTask,
+} from './embedding-pipeline';
+import { processClusterTask } from './cluster-pipeline';
 import { createWorkerRuntime } from './queue/runtime';
 
 const envFile = resolve(process.cwd(), '../../.env');
@@ -40,6 +47,25 @@ const createdSourceIds: string[] = [];
 let providerServer: Server | undefined;
 let providerUrl = '';
 const providerCalls: string[] = [];
+
+function hashEmbeddingInput(input: string) {
+  return createHash('sha256').update(input, 'utf8').digest('hex');
+}
+
+async function cleanupOwnFixture(articleIds: string[], eventTitlePrefix: string, sourceIds: string[]) {
+  if (articleIds.length) {
+    await connection.db.delete(event_articles).where(inArray(event_articles.article_id, articleIds));
+    await connection.db.delete(article_embeddings).where(inArray(article_embeddings.article_id, articleIds));
+    const taskRows = await connection.db.select({ id: ai_tasks.id }).from(ai_tasks).where(inArray(ai_tasks.article_id, articleIds));
+    if (taskRows.length) await connection.db.delete(ai_usage).where(inArray(ai_usage.ai_task_id, taskRows.map((row) => row.id)));
+    await connection.db.delete(ai_tasks).where(inArray(ai_tasks.article_id, articleIds));
+    await connection.db.delete(article_categories).where(inArray(article_categories.article_id, articleIds));
+    await connection.db.delete(articles).where(inArray(articles.id, articleIds));
+  }
+  const eventRows = await connection.db.select({ id: events.id }).from(events).where(like(events.title, `${eventTitlePrefix}%`));
+  if (eventRows.length) await connection.db.delete(events).where(inArray(events.id, eventRows.map((row) => row.id)));
+  if (sourceIds.length) await connection.db.delete(sources).where(inArray(sources.id, sourceIds));
+}
 
 function vectorFor(marker: string): number[] {
   if (marker.includes('A1')) return [1, 0, 0];
@@ -242,5 +268,221 @@ test('真实 Redis/PostgreSQL 受控 Embedding 完成保守事件聚类、失败
   } finally {
     await runtimeOne.close({ force: true });
     await runtimeTwo.close({ force: true });
+  }
+});
+
+test('成功 Embedding 任务重放会恢复唯一 cluster task 与队列任务', async () => {
+  const fixturePrefix = `${queuePrefix}-replay`;
+  const articleIds: string[] = [];
+  const sourceIds: string[] = [];
+  const config = embeddingConfig();
+  const provider = config.provider!;
+  const model = config.model!;
+  const title = `${fixturePrefix} 当前标题`;
+  const summary = `${fixturePrefix} 当前摘要`;
+  const inputHash = hashEmbeddingInput(`${title.trim()}\n${summary.trim()}`);
+  const runtime = createWorkerRuntime({
+    db: connection.db,
+    queuePrefix: `${fixturePrefix}-queue`,
+    concurrency: 1,
+    embeddingConfig: config,
+    embeddingProvider: new OpenAICompatibleEmbeddingProvider(config),
+  });
+  const queueJobId = () => `cluster-${clusterTaskId}`;
+  let clusterTaskId = '';
+  try {
+    const source = (await connection.db.insert(sources).values({
+      name: `${fixturePrefix}-source`,
+      type: 'rss',
+      country: 'US',
+      language: 'zh',
+      source_level: 'E',
+      enabled: false,
+      homepage: 'https://controlled.example',
+    }).returning({ id: sources.id }))[0];
+    assert.ok(source);
+    sourceIds.push(source.id);
+    const article = (await connection.db.insert(articles).values({
+      source_id: source.id,
+      original_url: `https://controlled.example/stage09/${fixturePrefix}/replay`,
+      canonical_url: `https://controlled.example/stage09/${fixturePrefix}/replay`,
+      content_hash: `${fixturePrefix}-content`,
+      title_hash: `${fixturePrefix}-title`,
+      original_title: title,
+      title_zh: title,
+      original_summary: summary,
+      summary_zh: summary,
+      original_language: 'zh',
+      published_at: new Date('2026-08-19T07:00:00.000Z'),
+      processing_status: 'embedded',
+      is_hidden: false,
+    }).returning({ id: articles.id }))[0];
+    assert.ok(article);
+    articleIds.push(article.id);
+    const task = (await connection.db.insert(ai_tasks).values({
+      task_type: 'embedding',
+      article_id: article.id,
+      status: 'success',
+      prompt_version: config.embeddingVersion,
+      model,
+      provider,
+      input_hash: inputHash,
+      cache_key: embeddingCacheKey({
+        articleId: article.id,
+        inputHash,
+        embeddingVersion: config.embeddingVersion,
+        provider,
+        model,
+      }),
+      result_json: { dimensions: 2, provider, model, inputHash },
+    }).returning())[0];
+    assert.ok(task);
+    await connection.db.insert(article_embeddings).values({
+      article_id: article.id,
+      provider,
+      model,
+      dimensions: 2,
+      embedding: [0, 1],
+      input_hash: inputHash,
+      embedding_version: config.embeddingVersion,
+    });
+
+    await runtime.start({ schedule: false });
+    await runtime.pause();
+    const callsBeforeReplay = providerCalls.length;
+    await processEmbeddingTask({
+      db: connection.db,
+      config,
+      provider: new OpenAICompatibleEmbeddingProvider(config),
+      enqueueCluster: async (payload, jobId) => {
+        await runtime.enqueueJob('cluster', payload, { jobId });
+      },
+    }, task.id, 1);
+    const clusterTasksAfterFirstReplay = await connection.db.select().from(ai_tasks).where(inArray(ai_tasks.article_id, [article.id]));
+    const clusterTask = clusterTasksAfterFirstReplay.find((row) => row.task_type === 'event-cluster');
+    assert.ok(clusterTask, '成功 Embedding 重放必须创建 cluster task');
+    clusterTaskId = clusterTask.id;
+    assert.equal(providerCalls.length, callsBeforeReplay, '成功 Embedding 重放不得调用 Provider');
+    assert.ok(await runtime.getJob('cluster', queueJobId()), '成功 Embedding 重放必须入队 cluster job');
+    assert.equal((await runtime.getQueue('cluster').getJobCounts('waiting')).waiting, 1);
+
+    await processEmbeddingTask({
+      db: connection.db,
+      config,
+      provider: new OpenAICompatibleEmbeddingProvider(config),
+      enqueueCluster: async (payload, jobId) => {
+        await runtime.enqueueJob('cluster', payload, { jobId });
+      },
+    }, task.id, 1);
+    const clusterTasksAfterSecondReplay = await connection.db.select().from(ai_tasks).where(inArray(ai_tasks.article_id, [article.id]));
+    assert.equal(clusterTasksAfterSecondReplay.filter((row) => row.task_type === 'event-cluster').length, 1, '重放不得创建重复 cluster task');
+    assert.equal(providerCalls.length, callsBeforeReplay, '再次重放不得调用 Provider');
+    assert.equal((await runtime.getQueue('cluster').getJobCounts('waiting')).waiting, 1, '确定性 cluster job 不得重复入队');
+  } finally {
+    if (clusterTaskId) await runtime.getJob('cluster', queueJobId())?.then((job) => job?.remove());
+    await runtime.close({ drain: false, force: true });
+    await cleanupOwnFixture(articleIds, fixturePrefix, sourceIds);
+  }
+});
+
+test('聚类候选只使用成员 Article 当前内容对应的 Embedding', async () => {
+  const fixturePrefix = `${queuePrefix}-current`;
+  const articleIds: string[] = [];
+  const sourceIds: string[] = [];
+  const config = embeddingConfig();
+  const provider = config.provider!;
+  const model = config.model!;
+  const now = new Date('2026-08-19T08:00:00.000Z');
+  const memberTitle = `${fixturePrefix} 成员当前标题`;
+  const memberSummary = `${fixturePrefix} 成员当前摘要`;
+  const oldInputHash = hashEmbeddingInput(`${fixturePrefix} 成员旧标题\n${fixturePrefix} 成员旧摘要`);
+  const currentInputHash = hashEmbeddingInput(`${memberTitle.trim()}\n${memberSummary.trim()}`);
+  const candidateTitle = `${fixturePrefix} 待聚类标题`;
+  const candidateSummary = `${fixturePrefix} 待聚类摘要`;
+  const candidateInputHash = hashEmbeddingInput(`${candidateTitle.trim()}\n${candidateSummary.trim()}`);
+  try {
+    const source = (await connection.db.insert(sources).values({
+      name: `${fixturePrefix}-source`,
+      type: 'rss',
+      country: 'US',
+      language: 'zh',
+      source_level: 'E',
+      enabled: false,
+      homepage: 'https://controlled.example',
+    }).returning({ id: sources.id }))[0];
+    assert.ok(source);
+    sourceIds.push(source.id);
+    const member = (await connection.db.insert(articles).values({
+      source_id: source.id,
+      original_url: `https://controlled.example/stage09/${fixturePrefix}/member`,
+      canonical_url: `https://controlled.example/stage09/${fixturePrefix}/member`,
+      content_hash: `${fixturePrefix}-member-content`,
+      title_hash: `${fixturePrefix}-member-title`,
+      original_title: memberTitle,
+      title_zh: memberTitle,
+      original_summary: memberSummary,
+      summary_zh: memberSummary,
+      original_language: 'zh',
+      published_at: new Date('2026-08-19T07:00:00.000Z'),
+      processing_status: 'embedded',
+      is_hidden: false,
+    }).returning({ id: articles.id }))[0];
+    const candidate = (await connection.db.insert(articles).values({
+      source_id: source.id,
+      original_url: `https://controlled.example/stage09/${fixturePrefix}/candidate`,
+      canonical_url: `https://controlled.example/stage09/${fixturePrefix}/candidate`,
+      content_hash: `${fixturePrefix}-candidate-content`,
+      title_hash: `${fixturePrefix}-candidate-title`,
+      original_title: candidateTitle,
+      title_zh: candidateTitle,
+      original_summary: candidateSummary,
+      summary_zh: candidateSummary,
+      original_language: 'zh',
+      published_at: new Date('2026-08-19T07:30:00.000Z'),
+      processing_status: 'embedded',
+      is_hidden: false,
+    }).returning({ id: articles.id }))[0];
+    assert.ok(member && candidate);
+    articleIds.push(member.id, candidate.id);
+    const event = (await connection.db.insert(events).values({
+      title: `${fixturePrefix} 已有 Event`,
+      summary: `${fixturePrefix} 已有 Event 摘要`,
+      first_seen_at: new Date('2026-08-19T07:00:00.000Z'),
+      last_seen_at: new Date('2026-08-19T07:00:00.000Z'),
+      article_count: 1,
+      source_count: 1,
+      status: 'developing',
+    }).returning({ id: events.id }))[0];
+    assert.ok(event);
+    await connection.db.insert(event_articles).values({ event_id: event.id, article_id: member.id, is_primary: true, similarity_score: 1, confidence: 1, cluster_method: 'embedding' });
+    await connection.db.insert(article_embeddings).values([
+      { article_id: member.id, provider, model, dimensions: 2, embedding: [1, 0], input_hash: oldInputHash, embedding_version: config.embeddingVersion },
+      { article_id: member.id, provider, model, dimensions: 2, embedding: [0, 1], input_hash: currentInputHash, embedding_version: config.embeddingVersion },
+      { article_id: candidate.id, provider, model, dimensions: 2, embedding: [1, 0], input_hash: candidateInputHash, embedding_version: config.embeddingVersion },
+    ]);
+    const clusterTask = (await connection.db.insert(ai_tasks).values({
+      task_type: 'event-cluster',
+      article_id: candidate.id,
+      status: 'pending',
+      prompt_version: config.embeddingVersion,
+      model: config.model,
+      provider: config.provider,
+      input_hash: candidateInputHash,
+      cache_key: `${fixturePrefix}-cluster-task`,
+    }).returning())[0];
+    assert.ok(clusterTask);
+
+    const result = await processClusterTask({ db: connection.db, now: () => now }, clusterTask.id, 1);
+    assert.equal(result.status, 'processed');
+    assert.ok(result.eventId);
+    assert.notEqual(result.eventId, event.id, '旧向量不得把新 Article 并入已有 Event');
+    const candidateLink = (await connection.db.select().from(event_articles).where(inArray(event_articles.article_id, [candidate.id])))[0];
+    assert.equal(candidateLink?.event_id, result.eventId);
+    assert.equal(candidateLink?.event_id === event.id, false);
+    const memberEmbeddings = await connection.db.select().from(article_embeddings).where(inArray(article_embeddings.article_id, [member.id]));
+    assert.equal(memberEmbeddings.length, 2, '历史向量必须保留');
+    assert.equal(memberEmbeddings.some((row) => row.input_hash === oldInputHash && row.embedding.join(',') === '1,0'), true, '旧向量必须保留');
+  } finally {
+    await cleanupOwnFixture(articleIds, fixturePrefix, sourceIds);
   }
 });

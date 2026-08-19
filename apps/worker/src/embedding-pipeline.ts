@@ -54,11 +54,18 @@ function modelName(config: EmbeddingConfig) {
   return config.model ?? 'unconfigured';
 }
 
-export function normalizedEmbeddingInput(article: typeof articles.$inferSelect): string | undefined {
+type EmbeddingInputArticle = Pick<typeof articles.$inferSelect, 'title_zh' | 'summary_zh'>;
+
+export function normalizedEmbeddingInput(article: EmbeddingInputArticle): string | undefined {
   const title = article.title_zh?.trim();
   const summary = article.summary_zh?.trim();
   if (!title || !summary) return undefined;
   return `${title}\n${summary}`;
+}
+
+export function embeddingInputHash(article: EmbeddingInputArticle): string | undefined {
+  const input = normalizedEmbeddingInput(article);
+  return input ? digest(input) : undefined;
 }
 
 export function embeddingCacheKey(args: {
@@ -97,7 +104,8 @@ export async function createOrGetEmbeddingTask(
   if (!isEligibleArticle(article)) return undefined;
   const inputText = normalizedEmbeddingInput(article);
   if (!inputText) return undefined;
-  const inputHash = digest(inputText);
+  const inputHash = embeddingInputHash(article);
+  if (!inputHash) return undefined;
   const embeddingVersion = config.embeddingVersion;
   const cacheKey = embeddingCacheKey({
     articleId,
@@ -258,8 +266,10 @@ export async function processEmbeddingTask(
   }
   const claim = await claimTask(options.db, taskId, attemptNumber, now());
   if (!claim.task || claim.task.status === 'success') {
-    const cached = await existingEmbedding(options.db, initial);
-    return { status: 'cached', articleId: initial.article_id, taskId, dimensions: cached?.dimensions ?? undefined, providerCalled: false };
+    const cached = await existingEmbedding(options.db, claim.task ?? initial);
+    if (!cached) throw new Error(`embedding success task 缺少对应 embedding: ${taskId}`);
+    await enqueueClusterTask(options.db, initial.article_id, options.enqueueCluster, cached);
+    return { status: 'cached', articleId: initial.article_id, taskId, dimensions: cached.dimensions ?? undefined, providerCalled: false };
   }
   if (!claim.acquired) return { status: 'busy', articleId: initial.article_id, taskId, providerCalled: false };
 

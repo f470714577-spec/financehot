@@ -1,5 +1,89 @@
 # BLOCKED
 
+## 阶段09任务2/3反向验证与恢复（2026-08-19）
+
+本轮两项临时反向均按预期变红，随后立即还原并恢复绿色；临时改动未保留：
+
+```text
+反向 A：临时恢复 success 直接返回
+$env:CI='true'; pnpm --filter @financehot/worker test
+ℹ tests 42
+ℹ pass 41
+ℹ fail 1
+ℹ skipped 0
+ℹ todo 0
+失败：成功 Embedding 重放必须创建 cluster task
+
+还原后同一命令：tests 42 / pass 42 / fail 0 / skipped 0 / todo 0
+
+反向 B：临时取消成员 Article current input_hash 筛选
+$env:CI='true'; pnpm --filter @financehot/worker test
+ℹ tests 42
+ℹ pass 41
+ℹ fail 1
+ℹ skipped 0
+ℹ todo 0
+失败：旧向量不得把新 Article 并入已有 Event
+
+还原后同一命令：tests 42 / pass 42 / fail 0 / skipped 0 / todo 0
+```
+
+修复保持历史向量用于审计但不参与当前候选匹配；成功重放缺少精确向量时明确抛错；当前阻塞：无。
+
+最终门禁第一次执行到 `build` 时，新增测试的可选 Provider/Model 类型导致 Worker `tsc --noEmit` 失败（7 项中 5 successful、`@financehot/worker#build` failed）；已在白名单测试文件中用非空断言固定受控配置类型。随后最终工作树按顺序复跑 `lint`、`build`、`typecheck`、`test`，均为 `7 successful / 7 total`，`git diff --check` 退出 0。真实 PostgreSQL 只读残留核对：`sources=0`、`articles=0`、`events=0`、`ai_tasks=0`、`article_embeddings=0`、`event_articles=0`；当前阻塞：无。
+
+## 阶段09任务1新增回归原始红叉（2026-08-19）
+
+仅新增 `embedding-cluster.integration.test.ts` 两项真实 PostgreSQL/Redis 回归后，按任务书运行：
+
+```text
+$env:CI='true'; pnpm --filter @financehot/worker test
+ℹ tests 42
+ℹ pass 40
+ℹ fail 2
+ℹ skipped 0
+ℹ todo 0
+
+✖ 成功 Embedding 任务重放会恢复唯一 cluster task 与队列任务
+AssertionError: 成功 Embedding 重放必须创建 cluster task
+
+✖ 聚类候选只使用成员 Article 当前内容对应的 Embedding
+AssertionError: 旧向量不得把新 Article 并入已有 Event
+actual: 'fd14a059-d40a-4f93-8c18-8d0f23594576'
+expected: 'fd14a059-d40a-4f93-8c18-8d0f23594576'
+```
+
+退出码 1；原有 40 项均通过，0 skip/todo。两项新增测试的 `finally` 清理已执行；当前阻塞：无，红叉待生产修复后转绿。
+
+## 阶段09返工基线首次环境失败（2026-08-19）
+
+任务书要求的首轮基线命令在默认沙箱中原始输出如下；分支、HEAD 与工作树均符合要求，Worker 失败是执行环境权限错误。随后以获批外部路径重跑同一命令，Docker 服务恢复可见，Worker `40/40`，因此未将环境错误写入业务修复：
+
+```text
+git status --short --branch
+## codex/stage-09-embedding-cluster
+git log -1 --oneline
+d47edc3 feat: 完成阶段09 Embedding 与事件聚类
+docker compose ps
+permission denied while trying to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine
+
+$env:CI='true'; pnpm --filter @financehot/worker test
+$ tsx --test --test-concurrency=1 "src/**/*.test.ts"
+✖ src\ai-pipeline.integration.test.ts
+✖ src\crawl-once.test.ts
+✖ src\embedding-cluster.integration.test.ts
+✖ src\queue.integration.test.ts
+ℹ tests 4
+ℹ pass 0
+ℹ fail 4
+Error: spawn EPERM
+...
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @financehot/worker@0.1.0 test
+Exit status 1
+```
+
+外部路径解除结果：`docker compose ps` 显示 `financehot-postgres` healthy、`financehot-redis` healthy；同一 Worker 命令为 `tests 40 / pass 40 / fail 0 / skipped 0 / todo 0`，退出码 0。当前阻塞：无。
+
 ## 当前结论（2026-08-19）
 
 当前阻塞：无。根级测试的跨包共享数据库 fixture 竞争已通过根测试入口串行化修复，并连续 3 次取得 `7/7 successful`；以下条目保留原始红叉和历史边界证据。真实模型质量验收按领导决定移至供应商选定后的上线前验收，本阶段不调用真实 Key、不购买额度、不伪造质量或成本结论。

@@ -1,5 +1,17 @@
 # PROGRESS
 
+## 阶段09返工回执（2026-08-19）
+- 已核对分支 `codex/stage-09-embedding-cluster`、HEAD `d47edc3`，工作树干净，符合任务书。
+- 默认沙箱 Docker/Node 分别报 named-pipe `permission denied`、`spawn EPERM`；原始输出已置于 `BLOCKED.md` 顶部。
+- 获批外部路径复核：PostgreSQL/Redis healthy；同一 Worker 命令 `tests 40 / pass 40 / fail 0 / skipped 0 / todo 0`，退出码 0。
+- 任务1仅新增两项真实 PostgreSQL/Redis 回归后，Worker `42` 项为 `40 pass / 2 fail / 0 skip / 0 todo`；两项失败分别明确暴露重放不补 cluster task、旧向量误合并，原始摘要已置于 `BLOCKED.md` 顶部。
+- 任务2修复：成功状态加载精确向量后复用幂等 cluster 创建/入队，缺向量明确失败；候选成员按同一规范化输入 SHA-256 过滤当前 hash，历史向量不删除。
+- 修复后 Worker 首次、重复运行均为 `tests 42 / pass 42 / fail 0 / skipped 0 / todo 0`，退出码 0；当前阻塞：无。
+- 反向 A 临时恢复 success 直接返回、反向 B 临时取消 current `input_hash` 筛选，均为 `42/41/1` 且失败点准确；立即还原后均恢复 `42/42`，临时改动未保留。
+- 最终工作树串行总门禁已通过：lint、build、typecheck、root test 均 Turbo `7 successful / 7 total`、0 cached；`git diff --check` 退出 0。
+- 只读 PostgreSQL 残留核对：stage09 唯一前缀的 sources/articles/events/ai_tasks/article_embeddings/event_articles 均为 `0`；白名单外改动为 `0`，当前阻塞：无。
+- 证据已收口，下一步创建基于 `d47edc3` 的新本地修复提交；不 push、不 deploy。
+
 ## 阶段09开工回执（2026-08-19）
 - 目标：把阶段08合格财经 Article 生成可追溯 Embedding，并保守、幂等归入或创建 Event。
 - 分支：`codex/stage-09-embedding-cluster`；基线 `codex/stage-08-ai-pipeline`，外部复核根 test `7/7 successful`。
