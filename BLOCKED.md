@@ -1,5 +1,50 @@
 # BLOCKED
 
+当前未解决阻塞：无。阶段10页面截图、横向溢出和控制台验收已于 2026-08-19 解除；下方保留历史阻塞与原始输出，便于审计和断线接手。
+
+## 阶段10页面验收解除（2026-08-19）
+
+默认沙箱首次启动本地浏览器时保留的原始环境错误：
+
+```text
+browserType.launch: spawn EPERM
+```
+
+本轮为验证 favicon 修复而运行 Web 测试时，默认沙箱原始输出同样为：
+
+```text
+✖ src\\api.integration.test.ts
+✖ src\\news-query.test.ts
+Error: spawn EPERM
+errno: -4048, code: 'EPERM', syscall: 'spawn'
+tests 2 / pass 0 / fail 2 / cancelled 0 / skipped 0 / todo 0
+退出码 1
+```
+
+获批沙箱外同一命令恢复为 `tests 24 / pass 24 / fail 0 / cancelled 0 / skipped 0 / todo 0 / exit 0`。
+
+获批沙箱外使用工作区自带 Playwright 与已安装 Edge 运行时重跑成功。首页唯一 console 404 来自未声明图标时的 `http://localhost:3000/favicon.ico`；仅在白名单允许的首页和 Event 详情页元数据中加入内联图标后复跑，未修改生产查询、Seed 或浏览器测试断言。
+
+真实浏览器四视口结果：
+
+```text
+homepage-1440x900: status=200, innerWidth=1440, scrollWidth=1440, bodyScrollWidth=1440, overflow=false, messages=[], failed=[]
+homepage-390x844:  status=200, innerWidth=390,  scrollWidth=390,  bodyScrollWidth=390,  overflow=false, messages=[], failed=[]
+event-1440x900:    status=200, innerWidth=1440, scrollWidth=1440, bodyScrollWidth=1440, overflow=false, messages=[], failed=[]
+event-390x844:     status=200, innerWidth=390,  scrollWidth=390,  bodyScrollWidth=390,  overflow=false, messages=[], failed=[]
+```
+
+截图已保存：
+
+```text
+docs/acceptance/phase-10/homepage-1440x900.png  1440x900
+docs/acceptance/phase-10/homepage-390x844.png    390x844
+docs/acceptance/phase-10/event-1440x900.png      1440x900
+docs/acceptance/phase-10/event-390x844.png       390x844
+```
+
+当前阻塞：无。
+
 ## 阶段10任务0基线原始输出（2026-08-19）
 
 基线核对：

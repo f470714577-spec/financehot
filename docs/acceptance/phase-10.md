@@ -8,7 +8,27 @@
 
 Worker、Web 和阶段10新增真实 PostgreSQL/Redis 集成测试已通过。聚类使用时间窗口、当前向量元数据/相似度、分类、国家实体、标题特征和动作冲突保护；高置信候选直接合并，边界候选才调用结构化 LLM；未配置或调用失败保守新建。Event 事实由 `event_articles` 唯一关系源重算，merge/split 在服务层事务化并幂等。
 
-页面代码和 API 闭环已完成，但 1440×900 与 390×844 截图、横向溢出和控制台 error/warning 实测未完成：`control-in-app-browser` 运行时导入被拒、Playwright CLI 不可用、Computer Use 启动审批超时。原始输出在 `BLOCKED.md`，没有伪造截图；因此本阶段的页面视觉验收仍为阻塞项。
+页面和 API 闭环已完成。通过工作区自带 Playwright 与本机已安装 Edge，对首页和 Event 详情执行了 `1440×900`、`390×844` 四视口真实验收；四页 HTTP 均为 200，横向溢出均为 0，console error/warning/pageerror 与 request failure 均为 0。截图已保存，历史工具阻塞原始输出仍保留在 `BLOCKED.md`。
+
+### 页面视觉与浏览器验收
+
+首次桌面首页的唯一 console 404 定位为 `/favicon.ico`。在白名单允许的首页和 Event 详情页元数据中加入内联图标后复跑，Web `lint`、`typecheck`、`test` 均退出 0，Web 测试为 `24/24`。
+
+四视口实际输出：
+
+```text
+homepage-1440x900: status=200, innerWidth=1440, scrollWidth=1440, bodyScrollWidth=1440, overflow=false, messages=[], failed=[]
+homepage-390x844:  status=200, innerWidth=390,  scrollWidth=390,  bodyScrollWidth=390,  overflow=false, messages=[], failed=[]
+event-1440x900:    status=200, innerWidth=1440, scrollWidth=1440, bodyScrollWidth=1440, overflow=false, messages=[], failed=[]
+event-390x844:     status=200, innerWidth=390,  scrollWidth=390,  bodyScrollWidth=390,  overflow=false, messages=[], failed=[]
+```
+
+截图：
+
+- `docs/acceptance/phase-10/homepage-1440x900.png`
+- `docs/acceptance/phase-10/homepage-390x844.png`
+- `docs/acceptance/phase-10/event-1440x900.png`
+- `docs/acceptance/phase-10/event-390x844.png`
 
 ## 真实测试输出
 
@@ -122,8 +142,8 @@ head=f5e9d33（门禁执行时的阶段10基线）
 post_commit=7fedbf0
 ```
 
-## 未完成/阻塞
+## 未完成/边界
 
-- 页面截图与浏览器视觉验收：阻塞，详见 `BLOCKED.md` 顶部的阶段10原始输出。
+- 当前阻塞：无。页面截图与浏览器视觉验收已完成；历史环境阻塞原始输出见 `BLOCKED.md`。
 - 真实供应商模型质量、成本和线上效果：按项目边界留到供应商选定后的上线前验收。
 - 阶段11评分/日报/后台/用户系统/部署：未开始。

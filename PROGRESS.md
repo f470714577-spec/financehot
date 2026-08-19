@@ -17,6 +17,13 @@
 - 收口核对：`git diff --check` 退出 0；白名单核对 `changed=22`、`whitelist_outside=0`；门禁前基线 HEAD 为 `f5e9d33`，已创建本地提交 `7fedbf0`，未 push/deploy。
 - 当前状态：业务实现、测试、文档、根级门禁和本地提交已收口；截图验收仍阻塞。断线续验重新读取本文件后，仅检查截图工具替代通道，不重做已验证代码和门禁。
 
+## 阶段10页面验收解除（2026-08-19）
+- 使用工作区自带 Playwright 和本机已安装 Edge，在真实 localhost 页面执行首页与 Event 详情的 `1440×900`、`390×844` 四视口验收；截图保存于 `docs/acceptance/phase-10/`。
+- 四页 HTTP 均为 `200`；四项 `innerWidth === scrollWidth === bodyScrollWidth`，横向溢出均为 `false`；console `error/warning/pageerror` 与 request failure 均为 `0`。
+- 首次桌面首页唯一 404 定位为 `/favicon.ico`；在白名单允许的首页与 Event 详情页元数据加入内联图标后，Web `lint`、`typecheck`、`test` 分别退出 `0`，Web `24/24`。
+- 默认沙箱的 `browserType.launch: spawn EPERM` 与 Web 测试 `spawn EPERM` 原始输出保留在 `BLOCKED.md`；按规则获批沙箱外复跑，未改产品代码掩盖环境错误。
+- 当前状态：阶段10代码、测试、真实受控服务、反向红绿、页面截图与控制台验收全部收口；当前阻塞：无。真实模型质量仍留待供应商选定后的上线前验收。
+
 ## 阶段09测试稳定性返工回执（2026-08-19）
 - 目标：只修集成测试关闭竞态与 Redis 测试键泄漏，不改阶段09业务实现。
 - 顺序：记录基线 → 定位每个测试实例 prefix/关闭依赖 → 精确清理反向红绿 → 历史键一次性清理 → 连续稳定门禁。

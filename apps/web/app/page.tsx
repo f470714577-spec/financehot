@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import { ArrowRight } from 'lucide-react';
 import { getHomeData } from '@financehot/db';
 import { AppShell } from '@/components/app-shell';
@@ -8,6 +9,12 @@ import { NewsFeed } from '@/components/news-feed';
 import { getDb } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
+
+export const metadata: Metadata = {
+  title: 'FinanceHot｜全球财经情报',
+  description: '全球财经情报聚合与 AI 分析平台',
+  icons: { icon: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%230b1b33%22/%3E%3Cpath d=%22M8 23 14 9l4 9 3-5 3 10%22 fill=%22none%22 stroke=%22%23fff%22 stroke-width=%223%22/%3E%3C/svg%3E' },
+};
 
 export default async function HomePage() {
   const data = await getHomeData(getDb().db);

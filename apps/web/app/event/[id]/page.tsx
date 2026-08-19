@@ -11,6 +11,8 @@ import { notFound } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
+const eventIcon = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%230b1b33%22/%3E%3Cpath d=%22M8 23 14 9l4 9 3-5 3 10%22 fill=%22none%22 stroke=%22%23fff%22 stroke-width=%223%22/%3E%3C/svg%3E';
+
 function statusLabel(value: string) {
   return ({ confirmed: '已确认', developing: '持续发展', rumor: '未经确认', disputed: '存在争议', retracted: '已撤回' } as Record<string, string>)[value] ?? value;
 }
@@ -21,7 +23,7 @@ function dateText(value: string | null) {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const event = await getEvent(getDb().db, (await params).id);
-  return { title: event ? `${event.title}｜事件详情｜FinanceHot` : '事件详情｜FinanceHot', description: event?.summary ?? 'FinanceHot 事件详情' };
+  return { title: event ? `${event.title}｜事件详情｜FinanceHot` : '事件详情｜FinanceHot', description: event?.summary ?? 'FinanceHot 事件详情', icons: { icon: eventIcon } };
 }
 
 export default async function EventDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ state?: string }> }) {
