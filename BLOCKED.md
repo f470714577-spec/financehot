@@ -44,6 +44,7 @@ tests 2 / pass 0 / fail 2 / skipped 0 / todo 0
 - 浏览器技能初始化失败：`Importing module "node:process" is not allowed in node_repl`。
 - 项目本地未提供 Playwright CLI：`'playwright' is not recognized as an internal or external command`。
 - Windows Computer Use 启动浏览器后等待授权 338 秒，原始结果：`Computer Use app approval timed out`。
+- 断线续验：重新导入浏览器客户端仍为 `Importing module "node:process" is not allowed in node_repl`；本机 `Get-Command` 未发现 `chrome`、`msedge`、`firefox`，工作区和插件目录也未发现 `playwright`/浏览器可执行文件。
 - 结论：代码/API/测试验收不受影响；1440×900 与 390×844 截图及控制台错误的真实页面验收尚未完成，未生成伪截图。
 
 ## 本轮阶段09任务0基线原始输出（2026-08-19）

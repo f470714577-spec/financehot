@@ -14,8 +14,8 @@
 - 任务3代码完成：首页 Event 优先、Article 详情入口保留；Event 详情展示状态、时间线、信源数量和质量排序；Web API 测试固定排序、计数、状态与查询次数，Web 保持 24 项全绿。1440×900/390×844 实机截图与控制台检查因浏览器工具阻塞，原始输出已记入 `BLOCKED.md`，未伪造截图。
 - 反向验证已完成：临时移除动作冲突保护，阶段10候选测试 `1 pass / 1 fail`；还原后 `1/1`。临时反转信源等级排序，Event API 测试 `1 pass / 1 fail`；还原后 `1/1`。临时改动均未保留。
 - 根级门禁第1轮已通过：按 `lint → build → typecheck → test` 顺序执行，四项均 Turbo `7 successful / 7 total`、退出码 0；root test 中 AI `17/17`、Web `24/24`、crawler `35/35`、DB `4/4`、Worker `45/45`，skip/todo 均为 0。无需第2/3轮。
-- 收口核对：`git diff --check` 退出 0；白名单核对 `changed=22`、`whitelist_outside=0`；分支为 `codex/stage-10-event-cluster`，HEAD 仍为基线 `f5e9d33`，待创建本地提交。
-- 当前状态：业务实现、测试和文档已收口；截图验收仍阻塞。下一步执行 `git diff --check`、最终白名单核对、仅本地提交和提交后状态核对。
+- 收口核对：`git diff --check` 退出 0；白名单核对 `changed=22`、`whitelist_outside=0`；门禁前基线 HEAD 为 `f5e9d33`，已创建本地提交 `7fedbf0`，未 push/deploy。
+- 当前状态：业务实现、测试、文档、根级门禁和本地提交已收口；截图验收仍阻塞。断线续验重新读取本文件后，仅检查截图工具替代通道，不重做已验证代码和门禁。
 
 ## 阶段09测试稳定性返工回执（2026-08-19）
 - 目标：只修集成测试关闭竞态与 Redis 测试键泄漏，不改阶段09业务实现。

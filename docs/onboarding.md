@@ -80,5 +80,5 @@ pnpm --filter @financehot/worker crawl-once
 - 阶段 05：查询 API、筛选、搜索、分页和前台 DB 接入已完成并通过 PostgreSQL 真实测试。
 - 阶段 06：RSS/Atom、JSON API、HTML Web Adapter、SSRF/DNS/重定向/robots/限流/重试和同步 `crawl-once` 已完成；持久化只在 `apps/worker` 组合，crawler 不写库。
 - 阶段 07：BullMQ `crawl`/`normalize` 队列化、常驻调度、重试、恢复、追踪和幂等已完成；只启动已有 handler。
-- 当前阶段10代码验收已完成；截图验收仍阻塞。下一步是收口根级门禁和本地提交；阶段11评分、日报、后台、用户系统和部署尚未开始，未经允许不要提前实现。
+- 当前阶段10代码、根级门禁和本地提交已完成（`7fedbf0`）；截图验收仍阻塞。阶段11评分、日报、后台、用户系统和部署尚未开始，未经允许不要提前实现。
 - 注意：宿主机 Postgres 端口用 **5433**（本机 PG14 占 5432 的规避，见 `.env.example`）；接手后 `docker compose up -d postgres redis` 即可。
