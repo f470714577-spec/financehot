@@ -113,6 +113,13 @@ $env:CI='true'; pnpm --filter @financehot/worker test
 
 反向验证也已完成：临时恢复 success 直接返回时 `42/41/1`，重放回归失败；临时取消 current `input_hash` 限制时 `42/41/1`，旧向量回归失败。两项均立即还原并复跑为 `42/42`。未改变阈值、72 小时时窗或分类规则。
 
+### 6.1 测试关闭与隔离稳定性
+
+- 三项集成测试各使用独立的 Redis prefix；等待中的 replay cluster job 在 runtime 关闭前精确移除，随后按 `drain: true` 关闭 Worker/Queue，并只扫描删除自身 `${prefix}:*` 键。
+- 主测试临时移除 Redis 清理调用时，反向结果为 `42/41/1`，残留断言准确发现 39 个键；恢复后为 `42/42`。历史 `stage09-it-*` 键在确认无相关进程后一次性精确清理，数量由 `1232` 降至 `0`。
+- 当前版本连续 5 次 Worker 均为 `42/42`、0 skip/todo、`Connection is closed=0`；早期一次失败尝试已记录在 `BLOCKED.md`，未计入最终稳定序列。
+- 测试失败时仍按自身 prefix 和 Article/Event 夹具清理；最终 Redis `stage09_keys=0`，PostgreSQL `sources/articles/events/ai_tasks/article_embeddings/event_articles` 均为 `0`。
+
 ## 7. 根级最终门禁
 
 第 1 轮因此前中断的受控夹具残留使 DB 观察到 `events=45` 而非 Seed 的 12，已记录原始输出并精确清理本轮测试残留；没有清库或修改 Seed。清理后 DB 独立测试 `4/4`。
@@ -139,3 +146,5 @@ exit 0
 本地提交在最终白名单复核后创建；未 push、未 deploy。
 
 本轮可靠性修复后的最终工作树再次按同一顺序执行上述四项门禁，均为 Turbo `7 successful / 7 total`、0 cached，`git diff --check` 退出 0。只读 PostgreSQL 残留核对为 `sources=0`、`articles=0`、`events=0`、`ai_tasks=0`、`article_embeddings=0`、`event_articles=0`；白名单外改动为 0。
+
+本轮仅针对测试可靠性缺口修改 `embedding-cluster.integration.test.ts`、`PROGRESS.md`、`BLOCKED.md` 和本验收文档；`embedding-pipeline.ts`、`cluster-pipeline.ts` 及其他白名单外文件未改。当前阻塞：无；未 push、未 deploy。

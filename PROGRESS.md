@@ -1,5 +1,18 @@
 # PROGRESS
 
+## 阶段09测试稳定性返工回执（2026-08-19）
+- 目标：只修集成测试关闭竞态与 Redis 测试键泄漏，不改阶段09业务实现。
+- 顺序：记录基线 → 定位每个测试实例 prefix/关闭依赖 → 精确清理反向红绿 → 历史键一次性清理 → 连续稳定门禁。
+- 最大风险：暂停 Worker、waiting Job、Queue 与 Redis connection 的关闭顺序产生 `Connection is closed`，以及共享 `stage09-it-*` 键污染后续测试。
+- 工作树干净，Worker 基线 `42/42`、0 skip/todo；原始输出已记入 `BLOCKED.md` 顶部。
+- Redis 扫描为 `stage09_keys=1198`，高于历史 `1156`；该命令在本轮 Worker 运行后执行，差额 42 暂按本轮新增键待定位，不直接清理。
+- 已定位并修复：主/replay/current 各自生成并保存独立 prefix；replay 先移除 waiting cluster Job，再按 `drain: true` 正常关闭 runtime；关闭后 SCAN 精确删除 `${prefix}:*` 并断言残留为 0。
+- 反向验证：临时移除主测试 Redis 清理后 Worker 为 `42/41/1`，且残留断言准确报出 `39` 个 prefix 键；恢复清理后为 `42/42`，临时改动未保留。
+- 按任务书完成一次性历史键清理：确认无相关 Worker/测试进程后，`stage09_keys_before=1232`、`stage09_keys_after=0`；未使用 FLUSH/清库。当前 PostgreSQL 六类测试残留均为 `0`。
+- 修复后最终版本连续 5 次 Worker 均为 `tests 42 / pass 42 / fail 0 / skipped 0 / todo 0`、`Connection is closed=0`、退出码 0；期间一次早期第 5 次尝试为 `42/41/1`，立即重跑为绿，随后重启连续计数并完成 5 次全绿。
+- 按顺序执行根级 `lint`、`build`、`typecheck`、`test`，每项 Turbo 均为 `7 successful / 7 total`、0 cached，`git diff --check` 退出 0。
+- 当前未改任何阶段09业务实现文件，阻塞：无。
+
 ## 阶段09返工回执（2026-08-19）
 - 已核对分支 `codex/stage-09-embedding-cluster`、HEAD `d47edc3`，工作树干净，符合任务书。
 - 默认沙箱 Docker/Node 分别报 named-pipe `permission denied`、`spawn EPERM`；原始输出已置于 `BLOCKED.md` 顶部。

@@ -1,5 +1,96 @@
 # BLOCKED
 
+## 本轮阶段09任务0基线原始输出（2026-08-19）
+
+```text
+git status --short
+[无输出，工作树干净]
+
+$env:CI='true'; pnpm --filter @financehot/worker test
+ℹ tests 42
+ℹ pass 42
+ℹ fail 0
+ℹ skipped 0
+ℹ todo 0
+退出码 0
+
+$keys = docker compose exec -T redis redis-cli --scan --pattern 'stage09-it-*'; "stage09_keys=$($keys.Count)"
+stage09_keys=1198
+```
+
+已知历史基线为 1156；本轮按任务书先运行一次 Worker 后扫描，当前为 1198，差额 42 与本次测试运行的新增键数量一致，暂不把它当作已确认的历史残留。当前阻塞：无，待定位每个测试实例的唯一 prefix 与 finally 清理。
+
+## 本轮测试稳定性修复红→绿原始证据（2026-08-19）
+
+反向验证临时移除主测试的精确 Redis 清理调用，未保留临时改动：
+
+```text
+$env:CI='true'; pnpm --filter @financehot/worker test
+ℹ tests 42
+ℹ pass 41
+ℹ fail 1
+ℹ skipped 0
+ℹ todo 0
+失败：Redis 测试 prefix 清理后仍有残留: stage09-it-4864-1787134190991-1-main (39)
+
+恢复清理调用后同一命令：
+ℹ tests 42
+ℹ pass 42
+ℹ fail 0
+ℹ skipped 0
+ℹ todo 0
+```
+
+一次性历史键清理前已确认没有相关 Worker/测试进程；精确扫描并分批 `DEL` 全部历史 `stage09-it-*` 键，未使用 FLUSH/清库：
+
+```text
+stage09_keys_before=1232
+stage09_keys_after=0
+```
+
+早期连续验证第 5 次曾出现一次 `42/41/1`（`Connection is closed=0`），立即诊断重跑为 `42/42`；按规则未将其计入稳定序列，随后对最终版本重新开始连续计数。最终版本连续 5 次原始摘要均为：
+
+```text
+run_1: tests 42 / pass 42 / fail 0 / skipped 0 / todo 0 / connection_closed_matches=0 / exit_code=0
+run_2: tests 42 / pass 42 / fail 0 / skipped 0 / todo 0 / connection_closed_matches=0 / exit_code=0
+run_3: tests 42 / pass 42 / fail 0 / skipped 0 / todo 0 / connection_closed_matches=0 / exit_code=0
+run_4: tests 42 / pass 42 / fail 0 / skipped 0 / todo 0 / connection_closed_matches=0 / exit_code=0
+run_5: tests 42 / pass 42 / fail 0 / skipped 0 / todo 0 / connection_closed_matches=0 / exit_code=0
+```
+
+最终只读残留核对：
+
+```text
+stage09_keys=0
+sources=0
+articles=0
+events=0
+ai_tasks=0
+article_embeddings=0
+event_articles=0
+```
+
+最终根级门禁按任务书顺序串行执行，均退出 0：
+
+```text
+$env:CI='true'; pnpm lint -- --force --output-logs=errors-only
+Tasks: 7 successful, 7 total
+
+$env:CI='true'; pnpm build -- --force --output-logs=errors-only
+Tasks: 7 successful, 7 total
+
+$env:CI='true'; pnpm typecheck -- --force --output-logs=errors-only
+Tasks: 7 successful, 7 total
+
+$env:CI='true'; pnpm test -- --force --output-logs=errors-only
+Tasks: 7 successful, 7 total
+
+git diff --check
+exit_code=0
+```
+
+当前阻塞：无。
+
 ## 阶段09任务2/3反向验证与恢复（2026-08-19）
 
 本轮两项临时反向均按预期变红，随后立即还原并恢复绿色；临时改动未保留：
